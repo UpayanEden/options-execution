@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Logs — CondorLive{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0 fw-bold">
+        <i class="bi bi-journal-text me-2 text-warning"></i>Event Log Viewer
+    </h5>
+    <span class="text-muted small">Showing {{ events|length }} events</span>
+</div>
+
+<!-- ── Filter bar ────────────────────────────────────────────────────── -->
+<div class="card mb-3">
+    <div class="card-body py-3">
+        <form method="GET" action="/logs" class="row g-2 align-items-end">
+            <div class="col-6 col-md-3">
+                <label class="form-label text-muted small mb-1">Symbol</label>
+                <select name="symbol" class="form-select form-select-sm bg-dark text-light border-secondary">
+                    <option value="">All Symbols</option>
+                    {% for sym in all_symbols %}
+                    <option value="{{ sym }}" {% if sym == symbol_filter %}selected{% endif %}>{{ sym }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label text-muted small mb-1">Event Type</label>
+                <select name="event_type" class="form-select form-select-sm bg-dark text-light border-secondary">
+                    <option value="">All Events</option>
+                    {% for etype in all_event_types %}
+                    <option value="{{ etype }}" {% if etype == event_filter %}selected{% endif %}>{{ etype }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label text-muted small mb-1">Level</label>
+                <select name="level" class="form-select form-select-sm bg-dark text-light border-secondary">
+                    <option value="">All Levels</option>
+                    <option value="DEBUG"    {% if level_filter == 'DEBUG'    %}selected{% endif %}>DEBUG</option>
+                    <option value="INFO"     {% if level_filter == 'INFO'     %}selected{% endif %}>INFO</option>
+                    <option value="WARNING"  {% if level_filter == 'WARNING'  %}selected{% endif %}>WARNING</option>
+                    <option value="ERROR"    {% if level_filter == 'ERROR'    %}selected{% endif %}>ERROR</option>
+                    <option value="CRITICAL" {% if level_filter == 'CRITICAL' %}selected{% endif %}>CRITICAL</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label text-muted small mb-1">Max Events</label>
+                <select name="limit" class="form-select form-select-sm bg-dark text-light border-secondary">
+                    <option value="50"  {% if limit == 50  %}selected{% endif %}>50</option>
+                    <option value="100" {% if limit == 100 %}selected{% endif %}>100</option>
+                    <option value="200" {% if limit == 200 %}selected{% endif %}>200</option>
+                    <option value="500" {% if limit == 500 %}selected{% endif %}>500</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100">
+                    <i class="bi bi-funnel me-1"></i>Apply Filters
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ── Event level colour legend ────────────────────────────────────── -->
+<div class="d-flex gap-3 mb-3 flex-wrap">
+    <span class="small"><span class="badge bg-info">INFO</span></span>
+    <span class="small"><span class="badge bg-warning text-dark">WARNING</span></span>
+    <span class="small"><span class="badge bg-danger">ERROR</span></span>
+    <span class="small"><span class="badge" style="background:#cc00cc">CRITICAL</span></span>
+    <span class="ms-auto text-muted small">Click any row to expand raw JSON</span>
+</div>
+
+<!-- ── Log table ─────────────────────────────────────────────────────── -->
+{% if events %}
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 small" id="log-table">
+                <thead>
+                    <tr>
+                        <th class="ps-3" style="width:100px">Time</th>
+                        <th style="width:80px">Level</th>
+                        <th style="width:220px">Event Type</th>
+                        <th style="width:120px">Symbol</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ev in events %}
+                    {% set level = ev.get('level', 'INFO') %}
+                    {% set row_id = 'row-' + loop.index|string %}
+                    {% set detail_id = 'detail-' + loop.index|string %}
+                    <tr class="log-row-{{ level }} cursor-pointer"
+                        onclick="toggleDetail('{{ detail_id }}')"
+                        style="cursor: pointer;">
+                        <td class="ps-3 timestamp-cell">
+                            {{ (ev.get('ts', '') or '')[-8:][:8] if (ev.get('ts', '') or '')|length > 8 else ev.get('ts', '—') }}
+                        </td>
+                        <td>
+                            {% if level == 'INFO' %}
+                            <span class="badge bg-info bg-opacity-75 text-dark">INFO</span>
+                            {% elif level == 'WARNING' %}
+                            <span class="badge bg-warning text-dark">WARN</span>
+                            {% elif level == 'ERROR' %}
+                            <span class="badge bg-danger">ERROR</span>
+                            {% elif level == 'CRITICAL' %}
+                            <span class="badge" style="background:#cc00cc">CRIT</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ level }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% set etype = ev.get('event_type', '') %}
+                            {% if 'FAIL' in etype or 'ERROR' in etype or 'BREACH' in etype %}
+                            <span class="text-danger fw-semibold">{{ etype }}</span>
+                            {% elif 'SUCCESS' in etype or 'PASS' in etype or 'RECONCILED' in etype %}
+                            <span class="text-success">{{ etype }}</span>
+                            {% elif 'SHIFT' in etype or 'KILL' in etype %}
+                            <span class="text-warning">{{ etype }}</span>
+                            {% else %}
+                            <span class="text-muted">{{ etype }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="fw-semibold">{{ ev.get('symbol', '—') }}</td>
+                        <td class="text-muted" style="max-width:500px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            {# Build a concise one-liner from the event payload #}
+                            {% set skip = ['ts', 'level', 'logger', 'event_type', 'symbol'] %}
+                            {% set parts = [] %}
+                            {% for k, v in ev.items() %}
+                                {% if k not in skip %}
+                                    {% if parts.append(k + '=' + v|string|truncate(40, True)) %}{% endif %}
+                                {% endif %}
+                            {% endfor %}
+                            {{ parts[:4]|join(' | ') }}
+                        </td>
+                    </tr>
+                    <!-- Expandable JSON row -->
+                    <tr id="{{ detail_id }}" style="display:none;">
+                        <td colspan="5" class="p-0">
+                            <pre class="json-raw m-2">{{ ev | tojson(indent=2) }}</pre>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="card">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-journal-x display-4 d-block mb-3 opacity-25"></i>
+        <h5>No Events Found</h5>
+        <p class="mb-0">No log events match the current filters.</p>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleDetail(id) {
+    const row = document.getElementById(id);
+    if (row) {
+        row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+    }
+}
+</script>
+{% endblock %}

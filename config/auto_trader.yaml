@@ -1,0 +1,68 @@
+auto_trader:
+  enabled: true
+  mode: live
+
+  # Strategies to evaluate each scan cycle (all compete by composite score)
+  # IC is tried first when conditions qualify; spreads are fallback / alternatives.
+  # Remove any entry here to disable that strategy entirely.
+  strategies:
+    - iron_condor
+    - broken_wing_butterfly
+    - bull_put_spread
+    - bear_call_spread
+    - calendar_spread
+
+  underlyings: auto   # scans all 200+ NFO-listed underlyings from instrument cache
+  # underlyings:       # uncomment to restrict to a manual list instead
+  # - NIFTY
+  # - BANKNIFTY
+  # - FINNIFTY
+  exchange: NFO
+  expiry:
+    min_dte: 15
+    max_dte: 45
+    preferred_dte: 30
+  entry:
+    time: 09:30
+    require_confirmation: false
+    max_losing_trades_per_day: 2  # halt all new entries after this many losing trades today
+    iv_assumption: 0.3
+    short_mult_start: 0.7
+    short_mult_min: 0.3
+    max_concurrent_positions: 1
+  exit:
+    profit_target_pct: 50
+    stop_loss_mult: 2.0
+    dte_exit: 2
+    monitor_interval_seconds: 900
+  monthly_target_pct: 10.0
+
+  # ── Intelligence filters (new) ───────────────────────────────────────────
+  filters:
+    iv_rank:
+      enabled: true
+      min_rank: 30          # skip entry if IV rank < 30 (premium too thin)
+      ideal_min: 50         # score peaks above 50; below = caution
+    vix:
+      enabled: true
+      min: 11.0             # below = not enough premium for ICs
+      max: 25.0             # above = tail risk too high
+      ideal_min: 14.0       # sweet spot lower bound
+      ideal_max: 20.0       # sweet spot upper bound
+    event_blackout:
+      enabled: true
+      days_before: 2        # block entry within N days of major events
+
+  # ── Timing intelligence ──────────────────────────────────────────────────
+  timing:
+    respect_windows: true   # enforce intraday timing quality gates
+    min_timing_score: 40    # skip if timing score < this (poor liquidity window)
+
+  # ── Notifications ────────────────────────────────────────────────────────
+  notifications:
+    desktop: true
+    telegram:
+      enabled: false
+      bot_token: ''         # set TELEGRAM_BOT_TOKEN env var or fill here
+      chat_id: ''           # your chat / group ID
+    min_score_to_notify: 55  # only notify if composite score >= this

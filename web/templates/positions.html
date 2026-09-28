@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Positions — CondorLive{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0 fw-bold">
+        <i class="bi bi-layers me-2 text-info"></i>Open Positions — 4-Leg Detail
+    </h5>
+    <span class="text-muted small">{{ now }}</span>
+</div>
+
+{% if positions %}
+    {% for pos in positions %}
+    {% set state = pos.get('state', 'OPEN') %}
+    <div class="card mb-4">
+        <!-- Position header -->
+        <div class="card-header d-flex justify-content-between align-items-center py-3">
+            <div class="d-flex align-items-center gap-3">
+                <span class="fs-5 fw-bold">{{ pos.get('symbol', '—') }}</span>
+                {% if state == 'OPEN' %}
+                <span class="badge badge-open">OPEN</span>
+                {% elif state == 'SHIFTING' %}
+                <span class="badge badge-shifting">SHIFTING</span>
+                {% else %}
+                <span class="badge badge-closed">{{ state }}</span>
+                {% endif %}
+                {% if pos.get('shift_count', 0) > 0 %}
+                <span class="badge bg-warning text-dark">
+                    <i class="bi bi-arrow-repeat me-1"></i>{{ pos.get('shift_count', 0) }} shift(s)
+                </span>
+                {% endif %}
+            </div>
+            <div class="text-end">
+                <div class="{% if (pos.get('pnl') or 0) >= 0 %}pnl-positive{% else %}pnl-negative{% endif %} fs-5 fw-bold">
+                    {% set pnl = pos.get('pnl', pos.get('unrealised_pnl', 0)) or 0 %}
+                    {% if pnl >= 0 %}+{% endif %}₹{{ "{:,.0f}".format(pnl) }}
+                </div>
+                <div class="text-muted small">Unrealised P&amp;L</div>
+            </div>
+        </div>
+
+        <div class="card-body">
+            <!-- Key metrics row -->
+            <div class="row g-3 mb-4">
+                <div class="col-6 col-md-2">
+                    <div class="text-muted small">Spot @ Entry</div>
+                    <div class="fw-semibold">₹{{ "{:,.1f}".format(pos.get('spot_at_entry', 0) or 0) }}</div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="text-muted small">Expiry</div>
+                    <div class="fw-semibold">{{ pos.get('expiry', '—') }}</div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="text-muted small">Lots</div>
+                    <div class="fw-semibold">{{ pos.get('lots', '—') }}</div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="text-muted small">Initial Credit</div>
+                    <div class="fw-semibold pnl-positive">₹{{ "{:.4f}".format(pos.get('initial_credit', 0) or 0) }}/share</div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="text-muted small">Entry Time</div>
+                    <div class="fw-semibold timestamp-cell">{{ (pos.get('entry_time', '') or '')[:16] or '—' }}</div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="text-muted small">Strategy Run ID</div>
+                    <div class="fw-semibold timestamp-cell small">{{ pos.get('strategy_run_id', pos.get('symbol', ''))[:20] }}</div>
+                </div>
+            </div>
+
+            <!-- 4-leg table -->
+            <h6 class="text-muted text-uppercase small mb-2" style="letter-spacing: 0.8px;">
+                <i class="bi bi-diagram-3 me-1"></i>Leg Breakdown
+            </h6>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Leg</th>
+                            <th>Trading Symbol</th>
+                            <th>Type</th>
+                            <th>Side</th>
+                            <th>Strike</th>
+                            <th>Expiry</th>
+                            <th>Lot Size</th>
+                            <th>Entry Price</th>
+                            <th>Current Bid</th>
+                            <th>Current Ask</th>
+                            <th>LTP</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set legs_info = [
+                            ('Long Put',    pos.get('long_put_symbol',    pos.get('long_put', {}).get('trading_symbol', '') if pos.get('long_put') else ''),
+                                           'PE', 'BUY',  pos.get('long_put_strike',   pos.get('strikes', {}).get('long_put', '—')),
+                                           pos.get('expiry', '—'),
+                                           pos.get('lot_size', pos.get('long_put', {}).get('lot_size', '—') if pos.get('long_put') else '—')),
+                            ('Short Put',   pos.get('short_put_symbol',   pos.get('short_put', {}).get('trading_symbol', '') if pos.get('short_put') else ''),
+                                           'PE', 'SELL', pos.get('short_put_strike',  pos.get('strikes', {}).get('short_put', '—')),
+                                           pos.get('expiry', '—'),
+                                           pos.get('lot_size', pos.get('short_put', {}).get('lot_size', '—') if pos.get('short_put') else '—')),
+                            ('Short Call',  pos.get('short_call_symbol',  pos.get('short_call', {}).get('trading_symbol', '') if pos.get('short_call') else ''),
+                                           'CE', 'SELL', pos.get('short_call_strike', pos.get('strikes', {}).get('short_call', '—')),
+                                           pos.get('expiry', '—'),
+                                           pos.get('lot_size', pos.get('short_call', {}).get('lot_size', '—') if pos.get('short_call') else '—')),
+                            ('Long Call',   pos.get('long_call_symbol',   pos.get('long_call', {}).get('trading_symbol', '') if pos.get('long_call') else ''),
+                                           'CE', 'BUY',  pos.get('long_call_strike',  pos.get('strikes', {}).get('long_call', '—')),
+                                           pos.get('expiry', '—'),
+                                           pos.get('lot_size', pos.get('long_call', {}).get('lot_size', '—') if pos.get('long_call') else '—')),
+                        ] %}
+                        {% for leg_name, sym, otype, side, strike, expiry_leg, lot_sz in legs_info %}
+                        <tr>
+                            <td class="fw-semibold">{{ leg_name }}</td>
+                            <td class="timestamp-cell">{{ sym or '—' }}</td>
+                            <td>
+                                <span class="badge {% if otype == 'PE' %}bg-danger{% else %}bg-success{% endif %} bg-opacity-25
+                                      text-{% if otype == 'PE' %}danger{% else %}success{% endif %}">
+                                    {{ otype }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge {% if side == 'SELL' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}">
+                                    {{ side }}
+                                </span>
+                            </td>
+                            <td class="fw-semibold">{{ strike }}</td>
+                            <td class="timestamp-cell">{{ expiry_leg }}</td>
+                            <td>{{ lot_sz }}</td>
+                            <td class="text-muted">—</td>
+                            <td class="text-muted">—</td>
+                            <td class="text-muted">—</td>
+                            <td class="text-muted">—</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Condor diagram -->
+            <div class="mt-3 p-3 rounded" style="background: rgba(0,0,0,0.2); font-family: monospace; font-size: 0.8rem;">
+                {% set strikes = pos.get('strikes', {}) %}
+                {% if strikes %}
+                <span class="text-info">LP: {{ strikes.get('long_put', '—') }}</span>
+                <span class="text-muted mx-2">◄──</span>
+                <span class="text-danger fw-bold">SP: {{ strikes.get('short_put', '—') }}</span>
+                <span class="text-muted mx-2">═══ CONDOR ═══</span>
+                <span class="text-success fw-bold">SC: {{ strikes.get('short_call', '—') }}</span>
+                <span class="text-muted mx-2">──►</span>
+                <span class="text-info">LC: {{ strikes.get('long_call', '—') }}</span>
+                {% else %}
+                <span class="text-muted">Strike data not available</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+{% else %}
+<div class="card">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-inbox display-4 d-block mb-3 opacity-25"></i>
+        <h5>No Positions</h5>
+        <p class="mb-0">No open condor positions found. The runner has not entered any positions yet today.</p>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

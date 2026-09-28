@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Iron Condor Live Trader{% endblock %}</title>
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
+          crossorigin="anonymous">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+          rel="stylesheet">
+    <style>
+        :root {
+            --bs-body-bg: #0f1117;
+            --bs-body-color: #e0e0e0;
+            --card-bg: #1a1d27;
+            --nav-bg: #12141e;
+            --border-color: #2a2d3e;
+            --accent-green: #00d68f;
+            --accent-red: #ff3d71;
+            --accent-yellow: #ffaa00;
+            --accent-blue: #0095ff;
+        }
+
+        body {
+            background-color: var(--bs-body-bg);
+            color: var(--bs-body-color);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        .navbar {
+            background-color: var(--nav-bg) !important;
+            border-bottom: 1px solid var(--border-color);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: var(--accent-blue) !important;
+        }
+
+        .nav-link {
+            color: #aaa !important;
+            font-size: 0.9rem;
+            transition: color 0.2s;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            color: #fff !important;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+        }
+
+        .card-header {
+            background-color: rgba(255,255,255,0.04);
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #888;
+        }
+
+        .table {
+            color: var(--bs-body-color);
+        }
+
+        .table th {
+            color: #888;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-color: var(--border-color);
+            font-weight: 600;
+        }
+
+        .table td {
+            border-color: var(--border-color);
+            vertical-align: middle;
+            font-size: 0.875rem;
+        }
+
+        .table-hover > tbody > tr:hover > * {
+            background-color: rgba(255,255,255,0.04);
+        }
+
+        .badge-open    { background-color: rgba(0,214,143,0.15); color: var(--accent-green); border: 1px solid rgba(0,214,143,0.3); }
+        .badge-closed  { background-color: rgba(136,136,136,0.15); color: #888; border: 1px solid rgba(136,136,136,0.3); }
+        .badge-shifting{ background-color: rgba(255,170,0,0.15); color: var(--accent-yellow); border: 1px solid rgba(255,170,0,0.3); }
+
+        .pnl-positive  { color: var(--accent-green); font-weight: 600; }
+        .pnl-negative  { color: var(--accent-red); font-weight: 600; }
+        .pnl-neutral   { color: #888; }
+
+        .kill-switch-btn {
+            background-color: var(--accent-red);
+            border: none;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .kill-switch-btn:hover {
+            background-color: #cc2d5a;
+        }
+
+        .kill-switch-active-badge {
+            background-color: var(--accent-red);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%   { opacity: 1; }
+            50%  { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
+        .stat-card-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+
+        .stat-card-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #666;
+        }
+
+        pre.json-raw {
+            background-color: #0a0c13;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 0.75rem;
+            color: #7ec8e3;
+            padding: 0.75rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .log-row-ERROR    { border-left: 3px solid var(--accent-red); }
+        .log-row-CRITICAL { border-left: 3px solid #cc00cc; }
+        .log-row-WARNING  { border-left: 3px solid var(--accent-yellow); }
+        .log-row-INFO     { border-left: 3px solid var(--accent-blue); }
+
+        .timestamp-cell {
+            font-size: 0.78rem;
+            color: #666;
+            font-family: 'Courier New', monospace;
+            white-space: nowrap;
+        }
+
+        .strike-pill {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.78rem;
+            background-color: rgba(255,255,255,0.06);
+            margin: 1px;
+        }
+
+        .footer-bar {
+            background-color: var(--nav-bg);
+            border-top: 1px solid var(--border-color);
+            font-size: 0.78rem;
+            color: #555;
+            padding: 0.5rem 1rem;
+        }
+
+        .spinner-sm {
+            width: 1rem;
+            height: 1rem;
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<!-- ── Navbar ──────────────────────────────────────────────────────────── -->
+<nav class="navbar navbar-expand-lg sticky-top">
+    <div class="container-fluid px-4">
+        <a class="navbar-brand" href="/">
+            <i class="bi bi-activity me-2"></i>CondorLive
+        </a>
+
+        {% if kill_switch_active %}
+        <span class="badge kill-switch-active-badge ms-2 me-3 px-3 py-2">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>KILL SWITCH ACTIVE
+        </span>
+        {% endif %}
+
+        <button class="navbar-toggler border-secondary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto">
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/">
+                        <i class="bi bi-speedometer2 me-1"></i>Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path == '/positions' %}active{% endif %}" href="/positions">
+                        <i class="bi bi-layers me-1"></i>Positions
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path == '/logs' %}active{% endif %}" href="/logs">
+                        <i class="bi bi-journal-text me-1"></i>Logs
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path == '/config' %}active{% endif %}" href="/config">
+                        <i class="bi bi-gear me-1"></i>Config
+                    </a>
+                </li>
+            </ul>
+
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-muted small" id="last-update"></span>
+                {% if kill_switch_active %}
+                <button class="btn btn-success btn-sm"
+                        onclick="toggleKillSwitch('deactivate')">
+                    <i class="bi bi-shield-check me-1"></i>Deactivate Kill Switch
+                </button>
+                {% else %}
+                <button class="btn kill-switch-btn btn-sm text-white"
+                        data-bs-toggle="modal" data-bs-target="#killSwitchModal">
+                    <i class="bi bi-stop-circle me-1"></i>Kill Switch
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</nav>
+
+<!-- ── Main content ────────────────────────────────────────────────────── -->
+<main class="container-fluid px-4 py-3">
+    {% block content %}{% endblock %}
+</main>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────── -->
+<div class="footer-bar d-flex justify-content-between">
+    <span>Iron Condor Live Trader &mdash; Zerodha NFO</span>
+    <span id="footer-time"></span>
+</div>
+
+<!-- ── Kill Switch Modal ───────────────────────────────────────────────── -->
+<div class="modal fade" id="killSwitchModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark border-danger">
+            <div class="modal-header border-danger">
+                <h5 class="modal-title text-danger">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>Activate Kill Switch
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">This will immediately halt all trading activity. The runner will
+                stop placing new orders and the shift monitor will cease all operations.</p>
+                <div class="mb-3">
+                    <label class="form-label text-muted small">Reason (optional)</label>
+                    <input type="text" class="form-control bg-dark text-light border-secondary"
+                           id="killSwitchReason" placeholder="e.g. Manual stop, market closed...">
+                </div>
+                <div class="alert alert-danger py-2 small mb-0">
+                    <i class="bi bi-info-circle me-1"></i>
+                    This action takes effect immediately. Deactivate manually to resume trading.
+                </div>
+            </div>
+            <div class="modal-footer border-danger">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger fw-bold"
+                        onclick="confirmKillSwitch()">
+                    <i class="bi bi-stop-circle me-1"></i>ACTIVATE KILL SWITCH
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Bootstrap 5 JS ─────────────────────────────────────────────────── -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
+        crossorigin="anonymous"></script>
+
+<script src="/static/js/dashboard.js"></script>
+
+<script>
+    // Update footer clock
+    function updateClock() {
+        const now = new Date();
+        const ist = new Intl.DateTimeFormat('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hour12: false, day: '2-digit', month: 'short', year: 'numeric'
+        }).format(now);
+        const el = document.getElementById('footer-time');
+        if (el) el.textContent = ist + ' IST';
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    async function confirmKillSwitch() {
+        const reason = document.getElementById('killSwitchReason').value || 'Activated via web UI';
+        await toggleKillSwitch('activate', reason);
+        bootstrap.Modal.getInstance(document.getElementById('killSwitchModal')).hide();
+    }
+
+    async function toggleKillSwitch(action, reason) {
+        const endpoint = `/api/kill_switch/${action}`;
+        try {
+            const resp = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason: reason || '' })
+            });
+            if (resp.ok) {
+                window.location.reload();
+            } else {
+                alert('Kill switch action failed: ' + resp.statusText);
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+</script>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>

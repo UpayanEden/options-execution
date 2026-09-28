@@ -1,0 +1,19 @@
+strategy:
+  name: expected_move_iron_condor
+  underlying: BHARTIARTL
+  exchange: NFO
+  expiry: '2026-08-25'
+  lots: 1
+  legs:
+  - side: BUY
+    option_type: PE
+    strike: 1880.0
+  - side: SELL
+    option_type: PE
+    strike: 1900.0
+  - side: SELL
+    option_type: CE
+    strike: 2000.0
+  - side: BUY
+    option_type: CE
+    strike: 2020.0

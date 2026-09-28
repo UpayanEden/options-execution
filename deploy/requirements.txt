@@ -1,0 +1,28 @@
+# ── Core trading ──────────────────────────────────────────────────────────
+kiteconnect>=4.2.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# ── Web dashboard ─────────────────────────────────────────────────────────
+flask>=3.0.0
+gunicorn>=21.0.0
+waitress>=3.0.0        # Alternative WSGI server (Windows-compatible)
+
+# ── Config and data ────────────────────────────────────────────────────────
+pyyaml>=6.0.1
+openpyxl>=3.1.2        # Excel report generation
+
+# ── HTTP client (used by kiteconnect internally) ──────────────────────────
+requests>=2.31.0
+
+# ── Timezone support ─────────────────────────────────────────────────────
+# zoneinfo is part of Python stdlib >= 3.9
+# For older Python versions, install tzdata:
+# tzdata>=2024.1
+
+# ── Optional: faster JSON ─────────────────────────────────────────────────
+# orjson>=3.9.0
+
+# ── Development / testing ─────────────────────────────────────────────────
+pytest>=7.4.0
+pytest-cov>=4.1.0

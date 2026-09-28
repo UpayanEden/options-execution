@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Config — CondorLive{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0 fw-bold">
+        <i class="bi bi-gear me-2 text-secondary"></i>Strategy Configuration
+    </h5>
+</div>
+
+{% if error %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <strong>Save failed:</strong> {{ error }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<div class="row g-3">
+
+    <!-- ── Left: YAML editor ─────────────────────────────────────────── -->
+    <div class="col-lg-8">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-file-earmark-code me-2"></i>live_config.yaml</span>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetEditor()">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('config-form').submit()">
+                        <i class="bi bi-save me-1"></i>Save Config
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <form id="config-form" method="POST" action="/config">
+                    <textarea
+                        name="config_yaml"
+                        id="config-editor"
+                        class="form-control border-0 rounded-0"
+                        rows="40"
+                        style="
+                            background: #0a0c13;
+                            color: #7ec8e3;
+                            font-family: 'Courier New', monospace;
+                            font-size: 0.8rem;
+                            resize: vertical;
+                            min-height: 500px;
+                            border-radius: 0 0 10px 10px !important;
+                        "
+                        spellcheck="false">{{ config }}</textarea>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Right: quick-reference panels ─────────────────────────────── -->
+    <div class="col-lg-4 d-flex flex-column gap-3">
+
+        <!-- Capital settings summary -->
+        <div class="card">
+            <div class="card-header"><i class="bi bi-cash-stack me-2"></i>Capital Settings</div>
+            <div class="card-body py-2">
+                <div id="capital-summary" class="small text-muted">Parsing YAML…</div>
+            </div>
+        </div>
+
+        <!-- Strategy parameters -->
+        <div class="card">
+            <div class="card-header"><i class="bi bi-sliders me-2"></i>Strategy Parameters</div>
+            <div class="card-body py-2">
+                <div id="strategy-summary" class="small text-muted">Parsing YAML…</div>
+            </div>
+        </div>
+
+        <!-- Stock enable/disable quick panel -->
+        <div class="card flex-grow-1">
+            <div class="card-header d-flex justify-content-between">
+                <span><i class="bi bi-list-check me-2"></i>Stock List</span>
+                <span class="badge bg-secondary" id="stock-count">—</span>
+            </div>
+            <div class="card-body p-0" style="max-height: 380px; overflow-y: auto;">
+                <div id="stock-list" class="small">
+                    <div class="text-center text-muted py-3">Parsing YAML…</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Attempt to parse YAML from the editor and render summaries
+// (client-side only, basic regex-based extraction)
+
+const originalConfig = document.getElementById('config-editor').value;
+
+function resetEditor() {
+    if (confirm('Reset to the last saved config?')) {
+        document.getElementById('config-editor').value = originalConfig;
+        parseAndRender();
+    }
+}
+
+function parseAndRender() {
+    const yaml = document.getElementById('config-editor').value;
+
+    // ── Capital section ───────────────────────────────────────────────
+    const capitalSection = yaml.match(/capital:([\s\S]*?)(?=\nstocks:|$)/)?.[1] || '';
+    const capLines = {};
+    for (const line of capitalSection.split('\n')) {
+        const m = line.match(/^\s+(\w+):\s*(.+)/);
+        if (m) capLines[m[1].trim()] = m[2].trim();
+    }
+    const capEl = document.getElementById('capital-summary');
+    if (Object.keys(capLines).length) {
+        capEl.innerHTML = Object.entries(capLines).map(([k, v]) =>
+            `<div class="d-flex justify-content-between border-bottom pb-1 mb-1" style="border-color:#2a2d3e!important">
+                <span class="text-muted">${k.replace(/_/g,' ')}</span>
+                <span class="fw-semibold">${v}</span>
+             </div>`
+        ).join('');
+    } else {
+        capEl.innerHTML = '<span class="text-warning">Could not parse capital section.</span>';
+    }
+
+    // ── Strategy section ──────────────────────────────────────────────
+    const stratSection = yaml.match(/strategy:([\s\S]*?)(?=\nzerodha:|$)/)?.[1] || '';
+    const stratLines = {};
+    for (const line of stratSection.split('\n')) {
+        const m = line.match(/^\s+(\w+):\s*(.+)/);
+        if (m) stratLines[m[1].trim()] = m[2].trim();
+    }
+    const stratEl = document.getElementById('strategy-summary');
+    if (Object.keys(stratLines).length) {
+        stratEl.innerHTML = Object.entries(stratLines).map(([k, v]) =>
+            `<div class="d-flex justify-content-between border-bottom pb-1 mb-1" style="border-color:#2a2d3e!important">
+                <span class="text-muted">${k.replace(/_/g,' ')}</span>
+                <span class="fw-semibold">${v}</span>
+             </div>`
+        ).join('');
+    } else {
+        stratEl.innerHTML = '<span class="text-warning">Could not parse strategy section.</span>';
+    }
+
+    // ── Stock list ────────────────────────────────────────────────────
+    const stockMatches = [...yaml.matchAll(/- symbol:\s*(\S+)[\s\S]*?enabled:\s*(true|false)/gim)];
+    const stocksEl = document.getElementById('stock-list');
+    const countEl = document.getElementById('stock-count');
+
+    if (stockMatches.length) {
+        countEl.textContent = stockMatches.length;
+        stocksEl.innerHTML = stockMatches.map(m => {
+            const sym = m[1];
+            const enabled = m[2].toLowerCase() === 'true';
+            return `<div class="d-flex justify-content-between align-items-center px-3 py-1 border-bottom"
+                         style="border-color:#2a2d3e!important">
+                <span class="fw-semibold">${sym}</span>
+                <span class="badge ${enabled ? 'bg-success' : 'bg-secondary'} bg-opacity-75">
+                    ${enabled ? 'Enabled' : 'Disabled'}
+                </span>
+            </div>`;
+        }).join('');
+    } else {
+        // Simple symbol extraction
+        const syms = [...yaml.matchAll(/- symbol:\s*(\S+)/gim)].map(m => m[1]);
+        countEl.textContent = syms.length || '—';
+        if (syms.length) {
+            stocksEl.innerHTML = syms.map(sym =>
+                `<div class="px-3 py-1 border-bottom fw-semibold small" style="border-color:#2a2d3e!important">${sym}</div>`
+            ).join('');
+        } else {
+            stocksEl.innerHTML = '<div class="text-center text-muted py-3">No stocks parsed.</div>';
+        }
+    }
+}
+
+// Run on load and on editor change (debounced)
+parseAndRender();
+let debounceTimer;
+document.getElementById('config-editor').addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(parseAndRender, 800);
+});
+</script>
+{% endblock %}

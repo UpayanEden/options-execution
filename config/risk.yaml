@@ -1,0 +1,32 @@
+risk:
+  capital_limit: 300000
+  max_strategy_loss: 7500
+  max_daily_loss: 8000
+  min_net_credit: 2.0           # absolute floor (pts) — kept low so stocks qualify
+  min_ror_pct: 15.0             # minimum return-on-risk % (credit / max-loss per lot)
+  target_net_credit: 12.0
+  max_bid_ask_spread_pct: 12.0  # raised slightly for stock options (wider spreads)
+  max_total_slippage: 5.0
+  quote_staleness_seconds: 30
+  entry_start_time: 09:20
+  entry_end_time: '14:30'
+  exit_start_time: 09:20
+  exit_end_time: '15:15'
+  limit_step: 0.05
+  order_wait_seconds: 3
+  max_repricing_attempts: 10
+  thin_queue_threshold: 500
+exit_rules:
+  hold_to_expiry: true
+  profit_target_pct: 80.0
+  profit_target_inr: null
+  stop_loss_inr: 1800
+  stop_loss_credit_multiple: null
+  dte_exit: 1
+  time_based_exit: '15:00'
+  emergency_exit_enabled: false
+  manual_approval_required: true
+paper:
+  fill_mode: MIDPOINT
+  fill_delay_seconds: 0
+  slippage_per_order: 0.05

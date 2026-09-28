@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — CondorLive{% endblock %}
+
+{% block extra_head %}
+<meta http-equiv="refresh" content="30">
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0 fw-bold">
+        <i class="bi bi-speedometer2 me-2 text-primary"></i>Live Dashboard
+    </h5>
+    <div class="d-flex align-items-center gap-3">
+        <span class="text-muted small">
+            <i class="bi bi-clock me-1"></i>{{ now }}
+        </span>
+        <span class="badge bg-secondary small">
+            <i class="bi bi-arrow-repeat me-1"></i>Auto-refresh 30s
+        </span>
+    </div>
+</div>
+
+<!-- ── Summary stat cards ────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+
+    <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-body text-center py-3">
+                <div class="stat-card-label mb-1">Total P&L (Today)</div>
+                <div class="stat-card-value {% if total_pnl >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
+                    {% if total_pnl >= 0 %}+{% endif %}₹{{ "{:,.0f}".format(total_pnl) }}
+                </div>
+                <div class="text-muted small mt-1">Realised + Unrealised</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-body text-center py-3">
+                <div class="stat-card-label mb-1">Open Positions</div>
+                <div class="stat-card-value text-info">{{ open_count }}</div>
+                <div class="text-muted small mt-1">Active condors</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-body text-center py-3">
+                <div class="stat-card-label mb-1">Win Rate</div>
+                <div class="stat-card-value {% if win_rate >= 60 %}pnl-positive{% elif win_rate >= 40 %}text-warning{% else %}pnl-negative{% endif %}">
+                    {{ win_rate }}%
+                </div>
+                <div class="text-muted small mt-1">Closed trades today</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-body text-center py-3">
+                <div class="stat-card-label mb-1">Shifts Today</div>
+                <div class="stat-card-value {% if shifts_today > 2 %}text-warning{% else %}text-light{% endif %}">
+                    {{ shifts_today }}
+                </div>
+                <div class="text-muted small mt-1">Condor adjustments</div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Positions table ───────────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-layers me-2"></i>Open Positions</span>
+        <a href="/positions" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-right me-1"></i>Full Detail
+        </a>
+    </div>
+    <div class="card-body p-0">
+        {% if positions %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th class="ps-3">Symbol</th>
+                        <th>State</th>
+                        <th>Expiry</th>
+                        <th>Spot @ Entry</th>
+                        <th>Short Put</th>
+                        <th>Short Call</th>
+                        <th>Lots</th>
+                        <th>Credit</th>
+                        <th>P&amp;L</th>
+                        <th>Shifts</th>
+                        <th class="pe-3">Entry Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pos in positions %}
+                    <tr>
+                        <td class="ps-3 fw-semibold">{{ pos.get('symbol', '—') }}</td>
+                        <td>
+                            {% set state = pos.get('state', 'OPEN') %}
+                            {% if state == 'OPEN' %}
+                            <span class="badge badge-open">OPEN</span>
+                            {% elif state == 'SHIFTING' %}
+                            <span class="badge badge-shifting">SHIFTING</span>
+                            {% else %}
+                            <span class="badge badge-closed">{{ state }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="timestamp-cell">{{ pos.get('expiry', '—') }}</td>
+                        <td>{{ "₹{:,.1f}".format(pos.get('spot_at_entry', 0) or 0) }}</td>
+                        <td>
+                            {% set strikes = pos.get('strikes', {}) %}
+                            {% if strikes %}
+                            <span class="strike-pill text-danger">{{ strikes.get('short_put', '—') }}</span>
+                            {% else %}
+                            {{ pos.get('short_put_strike', '—') }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if strikes %}
+                            <span class="strike-pill text-success">{{ strikes.get('short_call', '—') }}</span>
+                            {% else %}
+                            {{ pos.get('short_call_strike', '—') }}
+                            {% endif %}
+                        </td>
+                        <td>{{ pos.get('lots', '—') }}</td>
+                        <td class="pnl-positive">{{ "₹{:.2f}".format(pos.get('initial_credit', 0) or 0) }}</td>
+                        <td class="{% if (pos.get('pnl') or 0) >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
+                            {% set pnl = pos.get('pnl', pos.get('unrealised_pnl', 0)) or 0 %}
+                            {% if pnl >= 0 %}+{% endif %}₹{{ "{:,.0f}".format(pnl) }}
+                        </td>
+                        <td>{{ pos.get('shift_count', 0) }}</td>
+                        <td class="timestamp-cell pe-3">
+                            {% set et = pos.get('entry_time', '') %}
+                            {{ et[:16] if et else '—' }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-inbox display-4 d-block mb-3 opacity-25"></i>
+            <p class="mb-0">No open positions found.</p>
+            <small>Positions will appear here after the runner enters condors.</small>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ── Recent log events ─────────────────────────────────────────────── -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-journal-text me-2"></i>Recent Events</span>
+        <a href="/logs" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-right me-1"></i>View All Logs
+        </a>
+    </div>
+    <div class="card-body p-0" id="recent-events-container">
+        <div class="text-center text-muted py-3 small">
+            <span class="spinner-border spinner-sm me-2"></span>Loading...
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Load recent events via API on page load
+(async function () {
+    try {
+        const resp = await fetch('/api/logs?n=10');
+        const data = await resp.json();
+        const container = document.getElementById('recent-events-container');
+        if (!data.events || data.events.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted py-4 small">No events today.</div>';
+            return;
+        }
+        let html = '<div class="table-responsive"><table class="table table-hover mb-0 small"><thead><tr>'
+            + '<th class="ps-3">Time</th><th>Event</th><th>Symbol</th><th class="pe-3">Details</th>'
+            + '</tr></thead><tbody>';
+        for (const ev of data.events) {
+            const level = ev.level || 'INFO';
+            const rowClass = `log-row-${level}`;
+            const ts = (ev.ts || '').substring(11, 19);
+            const eventType = ev.event_type || '';
+            const sym = ev.symbol || '';
+            // Build a brief details string
+            const skipKeys = new Set(['ts', 'level', 'logger', 'event_type', 'symbol']);
+            const details = Object.entries(ev).filter(([k]) => !skipKeys.has(k))
+                .slice(0, 3).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(' | ');
+            html += `<tr class="${rowClass}">
+                <td class="ps-3 timestamp-cell">${ts}</td>
+                <td><span class="badge bg-secondary">${eventType}</span></td>
+                <td class="fw-semibold">${sym}</td>
+                <td class="text-muted pe-3" style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${details}</td>
+            </tr>`;
+        }
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+    } catch(e) {
+        document.getElementById('recent-events-container').innerHTML =
+            `<div class="text-center text-danger py-3 small">Failed to load events: ${e.message}</div>`;
+    }
+})();
+</script>
+{% endblock %}

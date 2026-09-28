@@ -1,0 +1,62 @@
+# Shifting Iron Condor — Live Trading Config
+# Used by shifting_condor_live.py
+
+shifting_condor:
+
+  # ── Underlying ────────────────────────────────────────────────────────────
+  underlying: BHARTIARTL        # NFO instrument name (must match Zerodha instrument master)
+  exchange: NFO
+  product: NRML                 # NRML = overnight; MIS = intraday
+
+  # ── Strategy geometry ─────────────────────────────────────────────────────
+  short_put_otm_pct: 5.0        # short put placed N% below spot
+  short_call_otm_pct: 5.0       # short call placed N% above spot
+  wing_width_pct: 3.0           # long strikes additional N% beyond shorts
+
+  # ── Shifting rule ─────────────────────────────────────────────────────────
+  # Shift fires when spot enters within shift_trigger_pct % of a short strike.
+  # A value of 1.5 means: shift triggers when spot is 1.5% above the short put
+  # OR 1.5% below the short call.
+  shift_trigger_pct: 1.5
+  max_shifts: 5                 # maximum shifts allowed per cycle (then exit)
+  lock_in_pct: 0.25             # close retained side too if its value <= 25% of original credit
+
+  # ── Expiry selection ──────────────────────────────────────────────────────
+  min_dte: 20                   # do not enter if DTE < this
+  max_dte: 45                   # do not enter if DTE > this
+  preferred_dte: 30             # prefer expiry closest to this DTE
+
+  # ── Capital & margin ──────────────────────────────────────────────────────
+  # Total capital allocated to this strategy (INR).
+  # Split 50% from free cash balance and 50% from pledged stock collateral.
+  total_capital: 500000
+  margin_pct: 0.125             # 12.5% of spot * lot_size per lot (notional margin)
+  cash_margin_pct: 0.50         # target fraction of margin from free cash
+  stock_margin_pct: 0.50        # target fraction of margin from pledged stock collateral
+
+  # ── Order execution ───────────────────────────────────────────────────────
+  # Initial limit price = midpoint of bid/ask.
+  # On each reprice cycle, move limit_step ticks toward market.
+  limit_step: 0.05              # tick size for repricing
+  order_wait_seconds: 30        # seconds to wait before each reprice attempt
+  max_reprice_attempts: 5       # give up after this many reprice cycles per leg
+
+  # ── Monitoring ────────────────────────────────────────────────────────────
+  monitor_interval_seconds: 60  # check spot price every N seconds
+
+  # ── Exit rules ────────────────────────────────────────────────────────────
+  take_profit_pct: 0.50         # exit if current cost-to-close <= (1 - 0.50) * entry_credit
+  # Set to null to hold to expiry
+  stop_loss_pct: 2.0            # exit if unrealised loss >= stop_loss_pct * entry_credit
+
+  # ── Entry quality filter ──────────────────────────────────────────────────
+  # Minimum net credit (INR per lot) required to enter a new condor.
+  # Reject the entry if the total premium collected across all 4 legs is below
+  # this threshold (avoids entering when spreads are too wide or premiums thin).
+  min_net_credit: 1.0           # INR per lot; set to 0.0 to disable
+
+  # ── Session loss cap ─────────────────────────────────────────────────────
+  # Stop trading for the day if cumulative realised P&L for this session drops
+  # below -max_session_loss INR.  Covers losses from closed spreads, failed
+  # shifts, and emergency exits.  Unrealised P&L on open legs is NOT counted.
+  max_session_loss: 15000.0     # INR; set to a very large number to disable

@@ -1,0 +1,32 @@
+# Virtual environment
+venv/
+
+# Secrets — NEVER commit
+.env
+config/credentials.env
+config/*.env
+!config/credentials.env.example
+
+# Logs, live data, DB
+logs/
+data/
+reports/*.html
+*.db
+*.log
+logs/KILL_SWITCH_ACTIVE
+logs/strategy.lock
+
+# Instrument cache
+logs/nfo_instruments_cache.csv
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

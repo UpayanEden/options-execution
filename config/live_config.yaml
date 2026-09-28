@@ -1,0 +1,253 @@
+# ── Live Trading Configuration ─────────────────────────────────────────────
+# Shifting Iron Condor Strategy on Zerodha NSE F&O
+#
+# Credentials: set via environment variables (ZERODHA_API_KEY, ZERODHA_API_SECRET,
+# ZERODHA_ACCESS_TOKEN) or in the zerodha section below.
+# NEVER commit real credentials to version control.
+
+mode: paper   # Set to 'live' to enable real order placement
+
+# ── Capital settings ────────────────────────────────────────────────────────
+capital:
+  total_capital: 2000000          # ₹20 lakh total deployed capital
+  cash_margin_pct: 0.50           # 50% of required margin must be in cash
+  max_capital_per_stock: 150000   # Max ₹1.5 lakh per individual stock position
+  max_open_positions: 10          # Maximum simultaneously open condors
+
+# ── Strategy parameters (shared across all stocks) ─────────────────────────
+strategy:
+  shift_trigger_pct: 1.5    # Trigger shift when spot moves 1.5% past short strike
+  wing_width_pct: 2.0       # Wing width = 2% of spot (long - short distance)
+  min_dte: 20               # Minimum days to expiry at entry
+  max_dte: 45               # Maximum days to expiry at entry
+  entry_start: "09:30"      # Earliest entry time (IST)
+  entry_end: "14:00"        # Latest entry time (IST)
+
+# ── Zerodha credentials (prefer env vars over hardcoding here) ──────────────
+zerodha:
+  api_key: ""               # Set ZERODHA_API_KEY env var instead
+  api_secret: ""            # Set ZERODHA_API_SECRET env var instead
+  access_token: ""          # Set ZERODHA_ACCESS_TOKEN env var instead (refreshed daily)
+
+# ── Per-stock configurations ─────────────────────────────────────────────────
+# put_dist_pct:  Short put distance from spot as % of spot price
+# call_dist_pct: Short call distance from spot as % of spot price
+# premium_pct:   Take-profit: close when remaining cost <= (1 - premium_pct) × initial_credit
+# enabled:       Set to false to exclude stock from session entries
+
+stocks:
+  - symbol: AMBUJACEM
+    put_dist_pct: 5.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: ANGELONE
+    put_dist_pct: 5.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: ASIANPAINT
+    put_dist_pct: 5.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: AXISBANK
+    put_dist_pct: 5.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: BAJAJ-AUTO
+    put_dist_pct: 6.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: BANKINDIA
+    put_dist_pct: 5.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: BHARTIARTL
+    put_dist_pct: 6.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: BIOCON
+    put_dist_pct: 4.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: BRITANNIA
+    put_dist_pct: 4.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: CDSL
+    put_dist_pct: 5.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: COALINDIA
+    put_dist_pct: 5.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: COCHINSHIP
+    put_dist_pct: 4.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: DLF
+    put_dist_pct: 5.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: DIVISLAB
+    put_dist_pct: 5.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: DRREDDY
+    put_dist_pct: 5.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: FEDERALBNK
+    put_dist_pct: 4.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: GODREJPROP
+    put_dist_pct: 5.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: HDFCAMC
+    put_dist_pct: 6.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: HEROMOTOCO
+    put_dist_pct: 6.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: HYUNDAI
+    put_dist_pct: 6.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: ICICIBANK
+    put_dist_pct: 5.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: M&M
+    put_dist_pct: 6.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: MARUTI
+    put_dist_pct: 6.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: MUTHOOTFIN
+    put_dist_pct: 5.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: OBEROIRLTY
+    put_dist_pct: 6.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: PIDILITIND
+    put_dist_pct: 4.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: PRESTIGE
+    put_dist_pct: 5.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: RELIANCE
+    put_dist_pct: 4.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: SBIN
+    put_dist_pct: 5.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: SUNPHARMA
+    put_dist_pct: 5.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: SUZLON
+    put_dist_pct: 5.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: TITAN
+    put_dist_pct: 6.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: ULTRACEMCO
+    put_dist_pct: 5.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: VBL
+    put_dist_pct: 5.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: VEDL
+    put_dist_pct: 5.0
+    call_dist_pct: 5.0
+    premium_pct: 0.4
+    enabled: true
+
+  - symbol: WAAREEENER
+    put_dist_pct: 4.0
+    call_dist_pct: 4.0
+    premium_pct: 0.4
+    enabled: true
