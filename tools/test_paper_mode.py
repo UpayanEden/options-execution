@@ -191,31 +191,32 @@ class PaperModeTest:
             self.failed += 1
             return False
 
-        # Find next expiry in DTE window
+        # Find next expiry from actual Zerodha instruments (handles Tuesday/Monday shifts)
         today = date.today()
         expiry = None
-        for delta in range(20, 50):
-            candidate = today + timedelta(days=delta)
-            # Monthly expiry = last Thursday of month
-            if candidate.weekday() == 3:  # Thursday
-                # Check it's last Thursday
-                if (candidate + timedelta(days=7)).month != candidate.month:
-                    expiry = candidate
-                    info(f"Using expiry: {expiry} (DTE={delta})")
+        try:
+            raw_instruments = self.broker._load_instruments()
+            symbol_expiries = sorted({
+                (inst["expiry"].date() if hasattr(inst["expiry"], "date") else date.fromisoformat(str(inst["expiry"])[:10]))
+                for inst in raw_instruments
+                if str(inst.get("name","")).upper() == self.symbol
+                and inst.get("instrument_type") in ("CE","PE")
+            })
+            for exp in symbol_expiries:
+                dte = (exp - today).days
+                if 20 <= dte <= 50:
+                    expiry = exp
+                    info(f"Using expiry: {expiry} (DTE={dte})")
                     break
-
-        if not expiry:
-            warn("No monthly expiry found in 20–50 DTE window — trying any Thursday")
+            if not expiry and symbol_expiries:
+                expiry = symbol_expiries[0]
+                info(f"Fallback expiry: {expiry} (nearest available)")
+        except Exception as e:
+            warn(f"Could not load instruments for expiry detection: {e}")
             self.warnings += 1
-            for delta in range(1, 60):
-                candidate = today + timedelta(days=delta)
-                if candidate.weekday() == 3:
-                    expiry = candidate
-                    info(f"Fallback expiry: {expiry} (DTE={delta})")
-                    break
 
         if not expiry:
-            fail("Could not find any Thursday expiry")
+            fail("Could not find any expiry for symbol")
             self.failed += 1
             return False
 
@@ -253,12 +254,30 @@ class PaperModeTest:
             info(f"Short put target:  ₹{short_put_target:,.0f}  ({sym_cfg.put_dist_pct}% OTM)")
             info(f"Short call target: ₹{short_call_target:,.0f} ({sym_cfg.call_dist_pct}% OTM)")
 
-            # Snap to standard strike grid (50 or 100 point steps)
-            step = 50 if spot < 2000 else 100
-            short_put_strike  = round(short_put_target  / step) * step
-            short_call_strike = round(short_call_target / step) * step
-            long_put_strike   = short_put_strike  - step * 2
-            long_call_strike  = short_call_strike + step * 2
+            # Get actual available strikes from instrument dump
+            from decimal import Decimal as D
+            raw_instruments = self.broker._load_instruments()
+            pe_strikes = sorted({
+                float(i["strike"]) for i in raw_instruments
+                if str(i.get("name","")).upper() == self.symbol
+                and i.get("instrument_type") == "PE"
+                and (i["expiry"].date() if hasattr(i["expiry"],"date") else date.fromisoformat(str(i["expiry"])[:10])) == expiry
+            })
+            ce_strikes = sorted({
+                float(i["strike"]) for i in raw_instruments
+                if str(i.get("name","")).upper() == self.symbol
+                and i.get("instrument_type") == "CE"
+                and (i["expiry"].date() if hasattr(i["expiry"],"date") else date.fromisoformat(str(i["expiry"])[:10])) == expiry
+            })
+            def snap(target, strikes):
+                return min(strikes, key=lambda s: abs(s - target)) if strikes else target
+            short_put_strike  = snap(short_put_target,  pe_strikes)
+            short_call_strike = snap(short_call_target, ce_strikes)
+            # Long legs: nearest available strike beyond the shorts
+            lp_cands = [s for s in pe_strikes if s < short_put_strike]
+            lc_cands = [s for s in ce_strikes if s > short_call_strike]
+            long_put_strike  = snap(short_put_strike  * (1 - 2/100), lp_cands) if lp_cands else short_put_strike - 50
+            long_call_strike = snap(short_call_strike * (1 + 2/100), lc_cands) if lc_cands else short_call_strike + 50
             info(f"Short put strike:  ₹{short_put_strike:,.0f}")
             info(f"Long  put strike:  ₹{long_put_strike:,.0f}")
             info(f"Short call strike: ₹{short_call_strike:,.0f}")
@@ -318,11 +337,17 @@ class PaperModeTest:
 
         today  = date.today()
         expiry = None
-        for delta in range(1, 60):
-            candidate = today + timedelta(days=delta)
-            if candidate.weekday() == 3 and (candidate + timedelta(7)).month != candidate.month:
-                expiry = candidate
-                break
+        try:
+            raw_instruments = self.broker._load_instruments()
+            symbol_expiries = sorted({
+                (inst["expiry"].date() if hasattr(inst["expiry"], "date") else date.fromisoformat(str(inst["expiry"])[:10]))
+                for inst in raw_instruments
+                if str(inst.get("name","")).upper() == self.symbol
+                and inst.get("instrument_type") in ("CE","PE")
+            })
+            expiry = symbol_expiries[0] if symbol_expiries else None
+        except Exception:
+            pass
 
         if not expiry:
             fail("No expiry found for quote test")
