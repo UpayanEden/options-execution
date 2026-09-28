@@ -14,8 +14,8 @@ from pathlib import Path
 
 # ── Binding ────────────────────────────────────────────────────────────────
 
-bind = "0.0.0.0:8000"
-"""Address and port to listen on. Nginx proxies to this."""
+bind = "0.0.0.0:5051"
+"""Address and port to listen on. Matches Docker EXPOSE 5051."""
 
 # ── Workers ────────────────────────────────────────────────────────────────
 

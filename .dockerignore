@@ -1,0 +1,16 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.git/
+.env
+config/credentials.env
+logs/
+data/
+reports/*.html
+*.db
+*.log
+pictures/
+.vscode/
+.idea/

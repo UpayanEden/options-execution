@@ -1,0 +1,59 @@
+version: "3.9"
+
+services:
+  options-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: options-web
+    restart: unless-stopped
+    ports:
+      - "5051:5051"
+    env_file:
+      - config/credentials.env
+    environment:
+      - TZ=Asia/Kolkata
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ./config/live_config.yaml:/app/config/live_config.yaml
+      - ./config/credentials.env:/app/config/credentials.env:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5051/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - trading-net
+
+  options-trader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: options-trader
+    restart: "no"                  # started manually each trading day
+    env_file:
+      - config/credentials.env
+    environment:
+      - TZ=Asia/Kolkata
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ./config/live_config.yaml:/app/config/live_config.yaml
+      - ./config/credentials.env:/app/config/credentials.env:ro
+    command: ["python", "run_live.py", "--mode", "paper"]
+    networks:
+      - trading-net
+    profiles:
+      - trader                     # only starts with: docker compose --profile trader up
+
+networks:
+  trading-net:
+    name: trading-net
+    driver: bridge
