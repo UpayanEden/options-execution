@@ -58,14 +58,13 @@ proc_name = "condor_live_dashboard"
 
 # ── Logging ────────────────────────────────────────────────────────────────
 
-_log_dir = Path("logs/gunicorn")
-_log_dir.mkdir(parents=True, exist_ok=True)
+# In Docker, log to stdout/stderr so `docker logs` works.
+# On bare metal, change to file paths if preferred.
+accesslog = "-"
+"""Access log to stdout (captured by Docker / systemd)."""
 
-accesslog = str(_log_dir / "access.log")
-"""Path to access log file. Set to '-' to write to stdout."""
-
-errorlog = str(_log_dir / "error.log")
-"""Path to error log file. Set to '-' to write to stderr."""
+errorlog = "-"
+"""Error log to stderr (captured by Docker / systemd)."""
 
 loglevel = "info"
 """Log level: debug, info, warning, error, critical."""
