@@ -402,6 +402,9 @@ def _db_connect() -> Optional[sqlite3.Connection]:
         return None
 
 
+_JSON_COLUMNS = {"strikes", "short_put", "long_put", "short_call", "long_call", "broker_order_ids"}
+
+
 def _load_positions_from_db() -> List[Dict[str, Any]]:
     """
     Load all positions from the SQLite database.
@@ -419,7 +422,18 @@ def _load_positions_from_db() -> List[Dict[str, Any]]:
         cur = conn.execute(
             "SELECT * FROM positions ORDER BY entry_time DESC LIMIT 100"
         )
-        rows = [dict(r) for r in cur.fetchall()]
+        rows = []
+        for r in cur.fetchall():
+            row = dict(r)
+            # Parse JSON columns so templates receive dicts/lists, not strings
+            for col in _JSON_COLUMNS:
+                val = row.get(col)
+                if isinstance(val, str) and val:
+                    try:
+                        row[col] = json.loads(val)
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+            rows.append(row)
         conn.close()
         return rows
     except sqlite3.OperationalError:
