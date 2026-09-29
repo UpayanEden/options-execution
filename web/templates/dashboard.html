@@ -27,11 +27,11 @@
     <div class="col-6 col-md-3">
         <div class="card h-100">
             <div class="card-body text-center py-3">
-                <div class="stat-card-label mb-1">Total P&L (Today)</div>
-                <div class="stat-card-value {% if total_pnl >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
-                    {% if total_pnl >= 0 %}+{% endif %}₹{{ "{:,.0f}".format(total_pnl) }}
+                <div class="stat-card-label mb-1">Unrealised P&L</div>
+                <div class="stat-card-value" id="total-pnl-value">
+                    <span class="text-muted small">fetching…</span>
                 </div>
-                <div class="text-muted small mt-1">Realised + Unrealised</div>
+                <div class="text-muted small mt-1" id="total-pnl-label">Open positions</div>
             </div>
         </div>
     </div>
@@ -185,9 +185,8 @@
                         </td>
                         <td>{{ pos.get('lots', '—') }}</td>
                         <td class="pnl-positive">{{ "₹{:.2f}".format(pos.get('initial_credit', 0) or 0) }}</td>
-                        <td class="{% if (pos.get('pnl') or 0) >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
-                            {% set pnl = pos.get('pnl', pos.get('unrealised_pnl', 0)) or 0 %}
-                            {% if pnl >= 0 %}+{% endif %}₹{{ "{:,.0f}".format(pnl) }}
+                        <td id="pnl-{{ pos.get('symbol', '') }}" data-symbol="{{ pos.get('symbol', '') }}">
+                            <span class="text-muted small">—</span>
                         </td>
                         <td>{{ pos.get('shift_count', 0) }}</td>
                         <td class="timestamp-cell pe-3">
@@ -282,6 +281,53 @@ async function updateLots() {
     }
     msg.style.display = 'block';
 }
+
+// ── Live P&L polling ──────────────────────────────────────────────────────
+async function refreshLivePnl() {
+    try {
+        const resp = await fetch('/api/live_pnl', {cache: 'no-store'});
+        const data = await resp.json();
+
+        // Update total P&L card
+        const card = document.getElementById('total-pnl-value');
+        const label = document.getElementById('total-pnl-label');
+        if (card) {
+            const total = data.total_unrealised_pnl ?? 0;
+            const cls = total >= 0 ? 'pnl-positive' : 'pnl-negative';
+            const sign = total >= 0 ? '+' : '';
+            card.className = `stat-card-value ${cls}`;
+            card.textContent = `${sign}₹${total.toLocaleString('en-IN', {maximumFractionDigits: 0})}`;
+        }
+        if (label && data.error) {
+            label.textContent = 'Quote error — retrying';
+        } else if (label) {
+            const now = new Date();
+            const t = now.toLocaleTimeString('en-IN', {timeZone:'Asia/Kolkata', hour:'2-digit', minute:'2-digit', second:'2-digit'});
+            label.textContent = `Updated ${t}`;
+        }
+
+        // Update per-row P&L
+        (data.positions || []).forEach(p => {
+            const cell = document.getElementById(`pnl-${p.symbol}`);
+            if (!cell) return;
+            if (p.unrealised_pnl == null) {
+                cell.innerHTML = '<span class="text-muted small">—</span>';
+                return;
+            }
+            const cls = p.unrealised_pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+            const sign = p.unrealised_pnl >= 0 ? '+' : '';
+            cell.className = cls;
+            cell.textContent = `${sign}₹${p.unrealised_pnl.toLocaleString('en-IN', {maximumFractionDigits: 0})}`;
+        });
+    } catch(e) {
+        const card = document.getElementById('total-pnl-value');
+        if (card) card.innerHTML = '<span class="text-muted small">unavailable</span>';
+    }
+}
+
+// Fetch immediately on load, then every 60 seconds
+refreshLivePnl();
+setInterval(refreshLivePnl, 60000);
 
 // Load recent events via API on page load
 (async function () {

@@ -253,6 +253,89 @@ def create_app() -> Flask:
         pnl = _load_daily_pnl()
         return jsonify({"pnl": pnl, "date": date.today().isoformat()})
 
+    @app.route("/api/live_pnl")
+    def api_live_pnl():
+        """
+        Fetch live option quotes for all open positions and return unrealised P&L.
+
+        Unrealised P&L per position:
+          close_cost = sum(ask of short legs) - sum(bid of long legs)
+          unrealised_pnl = (entry_credit - close_cost) * lots * lot_size
+
+        Returns JSON with per-position P&L and total.
+        """
+        positions = _load_positions_from_db()
+        open_pos = [p for p in positions if p.get("state") in ("OPEN", "SHIFTING")]
+        if not open_pos:
+            return jsonify({"positions": [], "total_unrealised_pnl": 0.0})
+
+        try:
+            broker = _get_read_broker()
+        except Exception as exc:
+            return jsonify({"error": str(exc), "positions": [], "total_unrealised_pnl": 0.0}), 200
+
+        # Build flat list of (token, symbol) for batch quote fetch
+        instruments: list[tuple[int, str]] = []
+        pos_legs: dict[str, dict] = {}
+        for pos in open_pos:
+            sym = pos["symbol"]
+            legs = {}
+            for leg_key in ("short_put", "long_put", "short_call", "long_call"):
+                leg = pos.get(leg_key)
+                if isinstance(leg, dict):
+                    token = leg.get("instrument_token")
+                    tsym = leg.get("trading_symbol", "")
+                    if token:
+                        token = int(token)
+                        instruments.append((token, tsym))
+                        legs[leg_key] = token
+            pos_legs[sym] = legs
+
+        try:
+            quotes = broker.get_quotes(instruments)
+        except Exception as exc:
+            return jsonify({"error": f"Quote fetch failed: {exc}", "positions": [], "total_unrealised_pnl": 0.0}), 200
+
+        results = []
+        total_pnl = 0.0
+        for pos in open_pos:
+            sym = pos["symbol"]
+            entry_credit = float(pos.get("initial_credit", 0) or 0)
+            lots = int(pos.get("lots", 1) or 1)
+            lot_size = int(pos.get("lot_size", 1) or 1)
+            qty = lots * lot_size
+            legs = pos_legs.get(sym, {})
+
+            close_cost = 0.0
+            complete = True
+            for leg_key, token in legs.items():
+                q = quotes.get(token)
+                if not q:
+                    complete = False
+                    break
+                if "short" in leg_key:
+                    close_cost += float(q.ask)   # buy back short at ask
+                else:
+                    close_cost -= float(q.bid)   # sell long at bid
+
+            if complete:
+                unrealised = round((entry_credit - close_cost) * qty, 2)
+                total_pnl += unrealised
+            else:
+                unrealised = None
+
+            results.append({
+                "symbol": sym,
+                "unrealised_pnl": unrealised,
+                "entry_credit": round(entry_credit, 4),
+                "close_cost": round(close_cost, 4) if complete else None,
+            })
+
+        return jsonify({
+            "positions": results,
+            "total_unrealised_pnl": round(total_pnl, 2),
+        })
+
     @app.route("/api/logs")
     def api_logs():
         """Return last N log events as JSON. Query params: n (default 100), symbol, event_type."""
@@ -725,6 +808,20 @@ def _runner_is_alive() -> tuple[bool, int]:
 
 
 # ── Application instance ───────────────────────────────────────────────────
+
+
+def _get_read_broker():
+    """
+    Return a read-only ZerodhaBroker using credentials from env / credentials.env.
+    Only used for quote fetching — never places orders.
+    Raises ValueError if credentials are missing.
+    """
+    api_key = os.environ.get("ZERODHA_API_KEY", "") or _load_credentials().get("ZERODHA_API_KEY", "")
+    access_token = os.environ.get("ZERODHA_ACCESS_TOKEN", "") or _load_credentials().get("ZERODHA_ACCESS_TOKEN", "")
+    if not api_key or not access_token:
+        raise ValueError("ZERODHA_API_KEY or ZERODHA_ACCESS_TOKEN not set")
+    from brokers.zerodha import ZerodhaBroker
+    return ZerodhaBroker(api_key=api_key, access_token=access_token)
 
 
 def _update_config_lots(new_lots: int) -> bool:
