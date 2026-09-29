@@ -290,31 +290,28 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label text-muted small mb-2">Trading Mode</label>
-                    <div class="d-flex gap-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="startMode"
-                                   id="modePaper" value="paper" checked>
-                            <label class="form-check-label" for="modePaper">
-                                <span class="fw-semibold">Paper</span>
-                                <span class="text-muted small d-block">Simulated — no real orders</span>
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="startMode"
-                                   id="modeLive" value="live">
-                            <label class="form-check-label" for="modeLive">
-                                <span class="fw-semibold text-warning">Live</span>
-                                <span class="text-muted small d-block">Real orders on NSE F&O</span>
-                            </label>
-                        </div>
-                    </div>
+                <p class="text-muted small mb-3">
+                    Mode is controlled by <code>mode:</code> in the config file.
+                    Change it on the <a href="/config" class="text-info">Config page</a> before starting.
+                </p>
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <span class="text-muted small">Current mode:</span>
+                    {% if trading_mode == 'live' %}
+                    <span class="badge bg-warning text-dark fs-6 px-3 py-2">
+                        <i class="bi bi-lightning-fill me-1"></i>LIVE
+                    </span>
+                    {% else %}
+                    <span class="badge bg-secondary fs-6 px-3 py-2">
+                        <i class="bi bi-file-earmark-text me-1"></i>PAPER
+                    </span>
+                    {% endif %}
                 </div>
-                <div id="liveWarning" class="alert alert-warning py-2 small mb-0" style="display:none;">
+                {% if trading_mode == 'live' %}
+                <div class="alert alert-warning py-2 small mb-2">
                     <i class="bi bi-exclamation-triangle-fill me-1"></i>
-                    Live mode places real NRML orders on NSE F&O via Zerodha.
+                    <strong>Live mode</strong> — real NRML orders will be placed on NSE F&O via Zerodha.
                 </div>
+                {% endif %}
                 <div id="startMsg" class="mt-2 small" style="display:none;"></div>
             </div>
             <div class="modal-footer border-secondary">
@@ -390,21 +387,13 @@
     }
 
     // Show/hide live warning when mode changes
-    document.querySelectorAll('input[name="startMode"]').forEach(r => {
-        r.addEventListener('change', () => {
-            const warn = document.getElementById('liveWarning');
-            if (warn) warn.style.display = r.value === 'live' ? 'block' : 'none';
-        });
-    });
-
     async function startSystem() {
-        const mode = document.querySelector('input[name="startMode"]:checked')?.value || 'paper';
         const msg = document.getElementById('startMsg');
         try {
             const resp = await fetch('/api/runner/start', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({mode})
+                body: JSON.stringify({})
             });
             const data = await resp.json();
             if (data.started) {

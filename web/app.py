@@ -70,9 +70,14 @@ def create_app() -> Flask:
 
     @app.context_processor
     def inject_runner_status():
-        """Inject runner_running into every template automatically."""
+        """Inject runner_running and trading_mode into every template automatically."""
         running, _ = _runner_is_alive()
-        return {"runner_running": running}
+        try:
+            cfg_raw = yaml.safe_load(_load_config_yaml()) or {}
+            trading_mode = str(cfg_raw.get("mode", "paper")).lower()
+        except Exception:
+            trading_mode = "paper"
+        return {"runner_running": running, "trading_mode": trading_mode}
 
     # ── Register routes ────────────────────────────────────────────────────
 
@@ -295,23 +300,29 @@ def create_app() -> Flask:
 
     @app.route("/api/runner/start", methods=["POST"])
     def api_runner_start():
-        """Launch run_live.py as a background subprocess."""
+        """Launch run_live.py as a background subprocess using mode from config file."""
         running, pid = _runner_is_alive()
         if running:
             return jsonify({"started": False, "reason": "already_running", "pid": pid})
 
-        data = request.get_json(force=True, silent=True) or {}
-        mode = data.get("mode", "paper")
-        if mode not in ("paper", "live"):
-            return jsonify({"started": False, "reason": "invalid_mode"}), 400
+        # Read mode from live_config.yaml — the dashboard config is the source of truth.
+        # Do NOT accept a mode override from the request body.
+        try:
+            cfg_raw = yaml.safe_load(_load_config_yaml()) or {}
+            mode = str(cfg_raw.get("mode", "paper")).lower()
+            if mode not in ("paper", "live"):
+                mode = "paper"
+        except Exception:
+            mode = "paper"
 
         try:
             project_root = Path(__file__).resolve().parent.parent
             log_dir = project_root / "logs" / "live"
             log_dir.mkdir(parents=True, exist_ok=True)
             runner_log = open(log_dir / "runner_stdout.log", "a")
+            # No --mode flag: run_live.py reads mode directly from live_config.yaml
             proc = subprocess.Popen(
-                [sys.executable, str(project_root / "run_live.py"), "--mode", mode, "--runner-only"],
+                [sys.executable, str(project_root / "run_live.py"), "--runner-only"],
                 cwd=str(project_root),
                 stdout=runner_log,
                 stderr=runner_log,
