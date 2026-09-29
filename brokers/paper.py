@@ -78,7 +78,29 @@ class PaperBroker(BrokerAdapter):
         return [o.model_dump(mode="json") for o in self._orders.values()]
 
     def get_margins(self) -> dict:
-        return {"available": 999999, "used": 0, "note": "paper_mode"}
+        return {
+            "equity": {
+                "available": {
+                    "live_balance": 999999.0,
+                    "collateral": 0.0,
+                    "intraday_payin": 0.0,
+                },
+                "utilised": {"debits": 0.0},
+            },
+            "note": "paper_mode",
+        }
+
+    def get_index_token(self, underlying: str):
+        """Delegate to live source broker."""
+        if hasattr(self._source, "get_index_token"):
+            return self._source.get_index_token(underlying)
+        return None
+
+    def _load_instruments(self, force_refresh: bool = False) -> list:
+        """Delegate to live source broker."""
+        if hasattr(self._source, "_load_instruments"):
+            return self._source._load_instruments(force_refresh=force_refresh)
+        return []
 
     # ── Paper order simulation ─────────────────────────────────────────────
 
