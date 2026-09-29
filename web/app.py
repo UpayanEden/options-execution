@@ -85,6 +85,7 @@ def create_app() -> Flask:
         shifts_today = _count_today_shifts()
         cfg_raw = yaml.safe_load(_load_config_yaml()) or {}
         capital_info = cfg_raw.get("capital", {})
+        strategy_info = cfg_raw.get("strategy", {})
         return render_template(
             "dashboard.html",
             positions=positions,
@@ -95,6 +96,7 @@ def create_app() -> Flask:
             kill_switch_active=_KILL_SWITCH_FLAG.exists(),
             now=datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
             capital_info=capital_info,
+            strategy_info=strategy_info,
             runner_running=_runner_is_alive()[0],
         )
 
@@ -353,6 +355,25 @@ def create_app() -> Flask:
         success = _update_config_capital(capital)
         if success:
             return jsonify({"updated": True, "total_capital": capital})
+        return jsonify({"error": "Failed to update config"}), 500
+
+    @app.route("/api/config/lots", methods=["POST"])
+    def api_config_lots():
+        """Update default_lots in live_config.yaml via JSON POST."""
+        data = request.get_json(force=True, silent=True) or {}
+        lots = data.get("default_lots")
+        if lots is None:
+            return jsonify({"error": "default_lots field required"}), 400
+        try:
+            lots = int(lots)
+            if lots < 0:
+                return jsonify({"error": "default_lots must be 0 or positive"}), 400
+        except (TypeError, ValueError):
+            return jsonify({"error": "default_lots must be an integer"}), 400
+
+        success = _update_config_lots(lots)
+        if success:
+            return jsonify({"updated": True, "default_lots": lots})
         return jsonify({"error": "Failed to update config"}), 500
 
     return app
@@ -676,6 +697,44 @@ def _runner_is_alive() -> tuple[bool, int]:
 
 
 # ── Application instance ───────────────────────────────────────────────────
+
+
+def _update_config_lots(new_lots: int) -> bool:
+    """
+    Update default_lots in the strategy section of live_config.yaml.
+
+    If the key doesn't exist yet it is appended after entry_end.
+
+    Args:
+        new_lots: New default_lots value (0 = auto-size from capital).
+
+    Returns:
+        True on success, False on error.
+    """
+    try:
+        if not _CONFIG_PATH.exists():
+            return False
+        import re
+        raw = _CONFIG_PATH.read_text(encoding="utf-8")
+        if re.search(r"default_lots\s*:", raw):
+            updated = re.sub(
+                r"(default_lots\s*:\s*)\d+",
+                lambda m: m.group(1) + str(new_lots),
+                raw,
+            )
+        else:
+            # Append after entry_end line
+            updated = re.sub(
+                r'(entry_end\s*:.*)',
+                lambda m: m.group(1) + f"\n  default_lots: {new_lots}           # Lots per trade for all stocks (0 = auto-size from capital)",
+                raw,
+            )
+        _CONFIG_PATH.write_text(updated, encoding="utf-8")
+        logger.info("config_lots_updated", extra={"default_lots": new_lots})
+        return True
+    except Exception as exc:
+        logger.error("config_lots_update_failed", extra={"error": str(exc)})
+        return False
 
 
 def _update_config_capital(new_capital: float) -> bool:

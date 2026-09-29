@@ -80,20 +80,30 @@
     </div>
     <div class="card-body py-3">
         <div class="row g-3 align-items-center">
-            <div class="col-6 col-md-3">
+            <div class="col-6 col-md-2">
                 <div class="text-muted small mb-1">Total Capital</div>
                 <div class="fw-bold text-success fs-5">₹{{ "{:,.0f}".format(capital_info.get('total_capital', 0)) }}</div>
             </div>
-            <div class="col-6 col-md-3">
+            <div class="col-6 col-md-2">
                 <div class="text-muted small mb-1">Max Per Stock</div>
                 <div class="fw-bold">₹{{ "{:,.0f}".format(capital_info.get('max_capital_per_stock', 0)) }}</div>
             </div>
-            <div class="col-6 col-md-3">
+            <div class="col-6 col-md-2">
                 <div class="text-muted small mb-1">Max Positions</div>
                 <div class="fw-bold">{{ capital_info.get('max_open_positions', '—') }}</div>
             </div>
-            <div class="col-6 col-md-3">
-                <div class="text-muted small mb-1">Update Total Capital</div>
+            <div class="col-6 col-md-2">
+                <div class="text-muted small mb-1">Default Lots</div>
+                <div class="fw-bold">
+                    {% if strategy_info.get('default_lots', 0) == 0 %}
+                    <span class="text-muted">Auto</span>
+                    {% else %}
+                    {{ strategy_info.get('default_lots') }}
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="text-muted small mb-1">Update Capital</div>
                 <div class="input-group input-group-sm">
                     <span class="input-group-text bg-dark text-muted border-secondary">₹</span>
                     <input type="number" id="capitalInput" class="form-control bg-dark text-light border-secondary"
@@ -101,8 +111,17 @@
                     <button class="btn btn-outline-success btn-sm" onclick="updateCapital()">Set</button>
                 </div>
             </div>
+            <div class="col-6 col-md-2">
+                <div class="text-muted small mb-1">Update Lots</div>
+                <div class="input-group input-group-sm">
+                    <input type="number" id="lotsInput" class="form-control bg-dark text-light border-secondary"
+                           placeholder="{{ strategy_info.get('default_lots', 0) }}" min="0" step="1">
+                    <button class="btn btn-outline-info btn-sm" onclick="updateLots()">Set</button>
+                </div>
+            </div>
         </div>
         <div id="capitalMsg" class="mt-2 small" style="display:none;"></div>
+        <div id="lotsMsg" class="mt-1 small" style="display:none;"></div>
     </div>
 </div>
 
@@ -227,6 +246,34 @@ async function updateCapital() {
         const data = await resp.json();
         if (data.updated) {
             msg.innerHTML = `<span class="text-success">Updated to ₹${val.toLocaleString('en-IN')}. Reload to confirm.</span>`;
+        } else {
+            msg.innerHTML = `<span class="text-danger">Error: ${data.error || 'unknown'}</span>`;
+        }
+    } catch(e) {
+        msg.innerHTML = `<span class="text-danger">Request failed: ${e.message}</span>`;
+    }
+    msg.style.display = 'block';
+}
+
+async function updateLots() {
+    const input = document.getElementById('lotsInput');
+    const msg = document.getElementById('lotsMsg');
+    const val = parseInt(input.value, 10);
+    if (isNaN(val) || val < 0) {
+        msg.innerHTML = '<span class="text-danger">Enter 0 (auto) or a positive integer.</span>';
+        msg.style.display = 'block';
+        return;
+    }
+    try {
+        const resp = await fetch('/api/config/lots', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({default_lots: val})
+        });
+        const data = await resp.json();
+        if (data.updated) {
+            const label = val === 0 ? 'Auto (from capital)' : `${val} lot${val !== 1 ? 's' : ''}`;
+            msg.innerHTML = `<span class="text-success">Default lots set to: ${label}. Reload to confirm.</span>`;
         } else {
             msg.innerHTML = `<span class="text-danger">Error: ${data.error || 'unknown'}</span>`;
         }

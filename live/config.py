@@ -60,6 +60,9 @@ class StockConfig:
     premium_pct: float
     """Take-profit threshold: close when current cost <= (1 - premium_pct) × initial_credit."""
 
+    lots: int = 0
+    """Fixed number of lots to trade. 0 = auto-size from available capital."""
+
     enabled: bool = True
     """Whether this stock is actively traded."""
 
@@ -85,6 +88,9 @@ class StrategyParams:
 
     entry_end: str
     """Latest time to enter new positions in IST 'HH:MM' format."""
+
+    default_lots: int = 0
+    """Default lots for all stocks. 0 = auto-size from capital. Overridden per-stock by StockConfig.lots."""
 
 
 @dataclass
@@ -164,6 +170,7 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
                 put_dist_pct=float(s.get("put_dist_pct", 5.0)),
                 call_dist_pct=float(s.get("call_dist_pct", 5.0)),
                 premium_pct=float(s.get("premium_pct", 0.4)),
+                lots=int(s.get("lots", 0)),
                 enabled=bool(s.get("enabled", True)),
             )
         )
@@ -177,6 +184,7 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
         max_dte=int(strat_raw.get("max_dte", 45)),
         entry_start=str(strat_raw.get("entry_start", "09:30")),
         entry_end=str(strat_raw.get("entry_end", "14:00")),
+        default_lots=int(strat_raw.get("default_lots", 0)),
     )
 
     # ── Zerodha credentials (yaml first, env overrides) ────────────────────

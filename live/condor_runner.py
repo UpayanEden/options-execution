@@ -346,13 +346,19 @@ class CondorRunner:
 
         lot_size = short_put_inst.lot_size
 
-        # ── 6. Get lots from capital manager ──────────────────────────────
-        lots = self._capital_manager.get_lots_for_capital(
-            symbol, spot, lot_size, self._config.strategy.wing_width_pct
-        )
-        if lots <= 0:
-            logger.warning("no_lots_available", extra={"symbol": symbol})
-            return None
+        # ── 6. Determine lots ──────────────────────────────────────────────
+        # Priority: per-stock lots > strategy default_lots > capital-based auto-size
+        fixed_lots = stock.lots or self._config.strategy.default_lots
+        if fixed_lots > 0:
+            lots = fixed_lots
+            logger.info("lots_fixed_by_config", extra={"symbol": symbol, "lots": lots})
+        else:
+            lots = self._capital_manager.get_lots_for_capital(
+                symbol, spot, lot_size, self._config.strategy.wing_width_pct
+            )
+            if lots <= 0:
+                logger.warning("no_lots_available", extra={"symbol": symbol})
+                return None
 
         qty = lots * lot_size
 
