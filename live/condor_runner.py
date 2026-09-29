@@ -28,6 +28,7 @@ from execution.models import Order, OrderStatus, ResolvedInstrument, Side
 from live.capital_manager import CapitalManager
 from live.config import LiveConfig, StockConfig
 from live.guard_layers import GuardContext, GuardReport, run_all_guards
+from live.position_store import PositionStore
 from live.shift_monitor import ShiftMonitor
 from live.trade_logger import EventType, TradeLogger
 from risk.kill_switch import KillSwitch, KillSwitchError
@@ -135,6 +136,7 @@ class CondorRunner:
         self._kill_switch = kill_switch or KillSwitch()
         self._positions: List[CondorPosition] = []
         self._shift_monitor: Optional[ShiftMonitor] = None
+        self._position_store = PositionStore()
         self._session_id = str(uuid.uuid4())[:8]
         logger.info("condor_runner_init", extra={"session_id": self._session_id, "mode": config.mode})
 
@@ -544,6 +546,8 @@ class CondorRunner:
             state="OPEN",
         )
 
+        self._position_store.upsert(pos)
+
         self._trade_logger.log_entry(
             symbol=symbol,
             spot=spot,
@@ -655,6 +659,7 @@ class CondorRunner:
         pnl = (pos.initial_credit - exit_debit) * qty
         pos.state = "CLOSED"
         self._capital_manager.release(symbol)
+        self._position_store.close_position(pos, pnl=pnl)
 
         self._trade_logger.log_exit(
             symbol=symbol,
@@ -906,6 +911,7 @@ class CondorRunner:
         pos.shift_count    += 1
         pos.spot_at_entry   = spot  # update for next trigger calculation
         pos.state           = "OPEN"
+        self._position_store.update_state(pos)
 
         new_strikes = {
             "short_put":  float(pos.short_put.strike),
