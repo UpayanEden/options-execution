@@ -226,14 +226,20 @@ class CondorRunner:
                 break
 
             now = datetime.now(IST)
-            # Check for any positions expiring today
-            for pos in list(positions):
-                if pos.state == "OPEN" and pos.expiry == now.date():
-                    logger.warning(
-                        "expiry_day_exit",
-                        extra={"symbol": pos.symbol, "expiry": str(pos.expiry)},
-                    )
-                    self.exit_condor(pos, "EXPIRY_DAY")
+            # Close positions at 3:00 PM on expiry day (hold to expiry,
+            # but close before 3:30 PM STT trap on ITM options)
+            if now.hour >= 15:  # 3:00 PM IST
+                for pos in list(positions):
+                    if pos.state == "OPEN" and pos.expiry == now.date():
+                        logger.warning(
+                            "expiry_day_exit",
+                            extra={
+                                "symbol": pos.symbol,
+                                "expiry": str(pos.expiry),
+                                "exit_time": now.strftime("%H:%M:%S"),
+                            },
+                        )
+                        self.exit_condor(pos, "EXPIRY_DAY")
 
             # Break out if all positions are closed
             open_positions = [p for p in positions if p.state == "OPEN"]
@@ -371,16 +377,17 @@ class CondorRunner:
             logger.warning("incomplete_quotes", extra={"symbol": symbol})
             return None
 
-        # ── Build limit prices (mid-price) ────────────────────────────────
-        def mid_price(q: Any) -> Decimal:
-            """Return midpoint price rounded to nearest 0.05."""
-            mid = (q.bid + q.ask) / Decimal("2")
-            return (mid / Decimal("0.05")).quantize(Decimal("1")) * Decimal("0.05")
+        # ── Build limit prices (top of book) ──────────────────────────────
+        # SELL legs: use best bid (top of buy stack) — what buyers will pay
+        # BUY  legs: use best ask (top of sell stack) — what sellers are asking
+        def _round(p: Decimal) -> Decimal:
+            """Round to nearest 0.05 tick."""
+            return (p / Decimal("0.05")).quantize(Decimal("1")) * Decimal("0.05")
 
-        short_put_price = mid_price(quotes_by_sym[short_put_inst.trading_symbol])
-        long_put_price = mid_price(quotes_by_sym[long_put_inst.trading_symbol])
-        short_call_price = mid_price(quotes_by_sym[short_call_inst.trading_symbol])
-        long_call_price = mid_price(quotes_by_sym[long_call_inst.trading_symbol])
+        short_put_price  = _round(quotes_by_sym[short_put_inst.trading_symbol].bid)
+        long_put_price   = _round(quotes_by_sym[long_put_inst.trading_symbol].ask)
+        short_call_price = _round(quotes_by_sym[short_call_inst.trading_symbol].bid)
+        long_call_price  = _round(quotes_by_sym[long_call_inst.trading_symbol].ask)
 
         # ── 8. Run guard layers ────────────────────────────────────────────
         instruments_map = {
