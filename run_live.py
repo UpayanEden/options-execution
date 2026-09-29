@@ -183,22 +183,19 @@ def _build_broker(mode: str, config):
             access_token=config.zerodha_access_token,
         )
     else:
-        # Paper mode — import from existing paper broker
+        # Paper mode — real quotes from Zerodha, simulated fills
         logger.info("Initialising PaperBroker for paper trading...")
-        try:
-            from brokers.paper import PaperBroker
-            return PaperBroker()
-        except ImportError:
-            logger.warning("PaperBroker not available; using ZerodhaBroker in read-only mode")
-            if not config.zerodha_api_key or not config.zerodha_access_token:
-                print("[ERROR] Paper mode requires credentials to fetch live quotes.")
-                print("        Set ZERODHA_API_KEY and ZERODHA_ACCESS_TOKEN.")
-                sys.exit(1)
-            from brokers.zerodha import ZerodhaBroker
-            return ZerodhaBroker(
-                api_key=config.zerodha_api_key,
-                access_token=config.zerodha_access_token,
-            )
+        if not config.zerodha_api_key or not config.zerodha_access_token:
+            print("[ERROR] Paper mode still needs ZERODHA_API_KEY and ZERODHA_ACCESS_TOKEN")
+            print("        to fetch live quotes. Refresh your token at /token first.")
+            sys.exit(1)
+        from brokers.zerodha import ZerodhaBroker
+        from brokers.paper import PaperBroker
+        live_source = ZerodhaBroker(
+            api_key=config.zerodha_api_key,
+            access_token=config.zerodha_access_token,
+        )
+        return PaperBroker(live_quote_source=live_source)
 
 
 # ── Web server thread ──────────────────────────────────────────────────────
