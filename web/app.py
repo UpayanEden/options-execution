@@ -138,6 +138,67 @@ def create_app() -> Flask:
             kill_switch_active=_KILL_SWITCH_FLAG.exists(),
         )
 
+    @app.route("/token")
+    def token_view():
+        """Render the daily token refresh page."""
+        creds = _load_credentials()
+        login_url = _build_kite_login_url(creds.get("ZERODHA_API_KEY", ""))
+        return render_template(
+            "token.html",
+            login_url=login_url,
+            api_key=creds.get("ZERODHA_API_KEY", ""),
+            token_set=bool(creds.get("ZERODHA_ACCESS_TOKEN", "")),
+            kill_switch_active=_KILL_SWITCH_FLAG.exists(),
+        )
+
+    @app.route("/api/token/refresh", methods=["POST"])
+    def api_token_refresh():
+        """
+        Exchange a request_token (from Kite redirect URL) for an access_token.
+        Saves the new token to credentials.env and updates os.environ live.
+        """
+        data = request.get_json(force=True, silent=True) or {}
+        raw = data.get("redirect_url", "").strip()
+        if not raw:
+            return jsonify({"error": "redirect_url is required"}), 400
+
+        # Extract request_token from full URL or bare token
+        import re as _re
+        from urllib.parse import parse_qs, urlparse
+        request_token = None
+        if raw.startswith("http"):
+            params = parse_qs(urlparse(raw).query)
+            toks = params.get("request_token") or params.get("request-token")
+            if toks:
+                request_token = toks[0]
+        elif _re.fullmatch(r"[A-Za-z0-9]{10,}", raw):
+            request_token = raw
+
+        if not request_token:
+            return jsonify({"error": "Could not extract request_token from input"}), 400
+
+        creds = _load_credentials()
+        api_key = creds.get("ZERODHA_API_KEY", "")
+        api_secret = creds.get("ZERODHA_API_SECRET", "")
+        if not api_key or not api_secret:
+            return jsonify({"error": "ZERODHA_API_KEY or ZERODHA_API_SECRET not set in credentials.env"}), 500
+
+        try:
+            from kiteconnect import KiteConnect
+            kite = KiteConnect(api_key=api_key)
+            session = kite.generate_session(request_token, api_secret=api_secret)
+            access_token = session["access_token"]
+        except Exception as exc:
+            logger.error("token_exchange_failed", extra={"error": str(exc)})
+            return jsonify({"error": f"Token exchange failed: {exc}"}), 500
+
+        # Save to credentials.env and update live environment
+        if _save_credential("ZERODHA_ACCESS_TOKEN", access_token):
+            os.environ["ZERODHA_ACCESS_TOKEN"] = access_token
+            logger.info("access_token_refreshed_via_web")
+            return jsonify({"refreshed": True, "token_preview": access_token[:6] + "****"})
+        return jsonify({"error": "Failed to write credentials.env"}), 500
+
     @app.route("/config", methods=["GET"])
     def config_view():
         """Render the config editor page."""
@@ -553,6 +614,47 @@ def _read_heartbeat() -> Optional[str]:
         except OSError:
             pass
     return None
+
+
+_CREDENTIALS_PATH = Path("config/credentials.env")
+
+
+def _load_credentials() -> dict:
+    """Load credentials.env as a key-value dict."""
+    if not _CREDENTIALS_PATH.exists():
+        return {}
+    result = {}
+    for line in _CREDENTIALS_PATH.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, _, v = line.partition("=")
+            result[k.strip()] = v.strip()
+    return result
+
+
+def _save_credential(key: str, value: str) -> bool:
+    """Update or insert a single key in credentials.env."""
+    try:
+        existing = _CREDENTIALS_PATH.read_text() if _CREDENTIALS_PATH.exists() else ""
+        import re as _re
+        pattern = rf"^{_re.escape(key)}\s*=.*$"
+        new_line = f"{key}={value}"
+        if _re.search(pattern, existing, flags=_re.MULTILINE):
+            updated = _re.sub(pattern, new_line, existing, flags=_re.MULTILINE)
+        else:
+            updated = existing.rstrip("\n") + f"\n{new_line}\n"
+        _CREDENTIALS_PATH.write_text(updated)
+        return True
+    except Exception as exc:
+        logger.error("save_credential_failed", extra={"key": key, "error": str(exc)})
+        return False
+
+
+def _build_kite_login_url(api_key: str) -> str:
+    """Return the Kite Connect OAuth login URL for the given API key."""
+    if not api_key:
+        return ""
+    return f"https://kite.zerodha.com/connect/login?api_key={api_key}&v=3"
 
 
 def _runner_is_alive() -> tuple[bool, int]:

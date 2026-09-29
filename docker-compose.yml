@@ -20,7 +20,7 @@ services:
       - ./data:/app/data
       - ./reports:/app/reports
       - ./config/live_config.yaml:/app/config/live_config.yaml
-      - ./config/credentials.env:/app/config/credentials.env:ro
+      - ./config/credentials.env:/app/config/credentials.env
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5051/api/health"]
       interval: 30s

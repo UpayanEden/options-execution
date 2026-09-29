@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Token Refresh — CondorLive{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h5 class="mb-0 fw-bold">
+        <i class="bi bi-key me-2 text-warning"></i>Daily Token Refresh
+    </h5>
+    <span class="text-muted small">Zerodha access tokens expire every day at 6:00 AM IST</span>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+
+        <!-- ── Status card ──────────────────────────────────────────── -->
+        <div class="card mb-4">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center gap-3">
+                    {% if token_set %}
+                    <i class="bi bi-shield-check text-success fs-4"></i>
+                    <div>
+                        <div class="fw-semibold">Token is set</div>
+                        <div class="text-muted small">Refresh it below if the session has expired</div>
+                    </div>
+                    {% else %}
+                    <i class="bi bi-shield-x text-danger fs-4"></i>
+                    <div>
+                        <div class="fw-semibold text-danger">No token set</div>
+                        <div class="text-muted small">Complete the steps below before starting the system</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Step 1 ───────────────────────────────────────────────── -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <span class="badge bg-primary me-2">Step 1</span>Log in to Zerodha
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    Click the button below to open the Zerodha login page. Log in with your
+                    Zerodha credentials. After login, Zerodha will redirect you to your app's
+                    redirect URL — <strong>copy that full URL from the browser address bar</strong>.
+                </p>
+                {% if login_url %}
+                <a href="{{ login_url }}" target="_blank" class="btn btn-warning fw-semibold w-100">
+                    <i class="bi bi-box-arrow-up-right me-2"></i>Open Zerodha Login
+                </a>
+                {% else %}
+                <div class="alert alert-danger small mb-0">
+                    <i class="bi bi-exclamation-triangle me-1"></i>
+                    ZERODHA_API_KEY is not configured in credentials.env
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- ── Step 2 ───────────────────────────────────────────────── -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <span class="badge bg-primary me-2">Step 2</span>Paste the redirect URL
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    After logging in, your browser will be redirected to a URL like:<br>
+                    <code class="small">https://your-redirect.com/?request_token=XXXXXX&amp;action=login&amp;status=success</code><br>
+                    Paste the full URL (or just the <code>request_token</code> value) below.
+                </p>
+                <div class="mb-3">
+                    <input type="text" id="redirectInput"
+                           class="form-control bg-dark text-light border-secondary"
+                           placeholder="Paste redirect URL or request_token here...">
+                </div>
+                <button class="btn btn-success fw-semibold w-100" onclick="refreshToken()" id="refreshBtn">
+                    <i class="bi bi-arrow-repeat me-2"></i>Exchange for Access Token &amp; Save
+                </button>
+                <div id="resultMsg" class="mt-3" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- ── Step 3 ───────────────────────────────────────────────── -->
+        <div class="card border-secondary">
+            <div class="card-header">
+                <span class="badge bg-secondary me-2">Step 3</span>Start the system
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-0">
+                    Once the token is saved, go back to the
+                    <a href="/" class="text-info">Dashboard</a> and click
+                    <strong>Start System</strong>. The new token is used immediately —
+                    no container restart needed.
+                </p>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function refreshToken() {
+    const input = document.getElementById('redirectInput').value.trim();
+    const msg = document.getElementById('resultMsg');
+    const btn = document.getElementById('refreshBtn');
+
+    if (!input) {
+        msg.innerHTML = '<div class="alert alert-warning py-2 small">Please paste the redirect URL or request_token first.</div>';
+        msg.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Exchanging token...';
+
+    try {
+        const resp = await fetch('/api/token/refresh', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({redirect_url: input})
+        });
+        const data = await resp.json();
+
+        if (data.refreshed) {
+            msg.innerHTML = `
+                <div class="alert alert-success py-2 small">
+                    <i class="bi bi-check-circle-fill me-1"></i>
+                    <strong>Token saved!</strong> Preview: <code>${data.token_preview}</code><br>
+                    <span class="text-muted">You can now start the system from the Dashboard.</span>
+                </div>`;
+            // Reload after 2s to update the status badge
+            setTimeout(() => window.location.reload(), 2000);
+        } else {
+            msg.innerHTML = `<div class="alert alert-danger py-2 small"><i class="bi bi-x-circle me-1"></i>${data.error || 'Unknown error'}</div>`;
+        }
+    } catch(e) {
+        msg.innerHTML = `<div class="alert alert-danger py-2 small">Request failed: ${e.message}</div>`;
+    }
+
+    msg.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-repeat me-2"></i>Exchange for Access Token & Save';
+}
+</script>
+{% endblock %}
