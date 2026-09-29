@@ -263,8 +263,11 @@ class ShiftMonitor:
         """
         Fetch the current spot price for the underlying equity.
 
-        Tries the NSE equity quote first (e.g. "NSE:RELIANCE").  Falls back
-        to the spot recorded at entry if the live fetch fails.
+        For NSE equities, uses get_equity_spot() which correctly applies the
+        NSE: exchange prefix.  For index underlyings (NIFTY etc.), tries
+        get_index_token() + get_quotes().  Falls back to spot_at_entry on
+        any failure so monitoring continues even if quotes are temporarily
+        unavailable.
 
         Args:
             pos:     CondorPosition dataclass.
@@ -273,13 +276,34 @@ class ShiftMonitor:
         Returns:
             Current spot price or None if unavailable.
         """
+        underlying = getattr(pos, "underlying", "")
         try:
-            underlying = getattr(pos, "underlying", "")
-            eq_quotes = self._broker.get_quotes([(0, f"NSE:{underlying}")])
-            for q in eq_quotes.values():
-                if float(q.ltp) > 0:
-                    return float(q.ltp)
-        except Exception:
-            pass
+            # Index underlyings (NIFTY, BANKNIFTY, etc.)
+            if hasattr(self._broker, "get_index_token"):
+                idx_token = self._broker.get_index_token(underlying)
+                if idx_token:
+                    quotes = self._broker.get_quotes([(idx_token, underlying)])
+                    if idx_token in quotes:
+                        ltp = float(quotes[idx_token].ltp)
+                        if ltp > 0:
+                            return ltp
 
-        return float(getattr(pos, "spot_at_entry", 0) or 0)
+            # NSE equities — must use NSE: prefix, not NFO:
+            if hasattr(self._broker, "get_equity_spot"):
+                spot = self._broker.get_equity_spot(underlying)
+                if spot and spot > 0:
+                    return spot
+        except Exception as exc:
+            logger.warning(
+                "shift_monitor_spot_fetch_failed",
+                extra={"symbol": underlying, "error": str(exc)},
+            )
+
+        # Last resort: use stale entry price so monitoring doesn't halt
+        fallback = float(getattr(pos, "spot_at_entry", 0) or 0)
+        if fallback > 0:
+            logger.warning(
+                "shift_monitor_using_stale_spot",
+                extra={"symbol": underlying, "spot_at_entry": fallback},
+            )
+        return fallback or None
