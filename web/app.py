@@ -26,7 +26,10 @@ import glob
 import json
 import logging
 import os
+import signal
 import sqlite3
+import subprocess
+import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -45,6 +48,8 @@ _LOG_DIR = Path("logs/live")
 _CONFIG_PATH = Path("config/live_config.yaml")
 _KILL_SWITCH_FLAG = Path("logs/KILL_SWITCH_ACTIVE")
 _HEARTBEAT_FILE = Path("logs/live/heartbeat.txt")
+_RUNNER_PID_FILE = Path("logs/runner.pid")
+_RUNNER_MODE_FILE = Path("logs/runner.mode")
 
 # ── Flask app factory ──────────────────────────────────────────────────────
 
@@ -62,6 +67,12 @@ def create_app() -> Flask:
         static_folder=str(Path(__file__).parent / "static"),
     )
     app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-in-prod")
+
+    @app.context_processor
+    def inject_runner_status():
+        """Inject runner_running into every template automatically."""
+        running, _ = _runner_is_alive()
+        return {"runner_running": running}
 
     # ── Register routes ────────────────────────────────────────────────────
 
@@ -84,6 +95,7 @@ def create_app() -> Flask:
             kill_switch_active=_KILL_SWITCH_FLAG.exists(),
             now=datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
             capital_info=capital_info,
+            runner_running=_runner_is_alive()[0],
         )
 
     @app.route("/positions")
@@ -210,6 +222,58 @@ def create_app() -> Flask:
             logger.info("kill_switch_deactivated_web")
             return jsonify({"deactivated": True})
         return jsonify({"deactivated": False, "message": "Kill switch was not active"})
+
+    @app.route("/api/runner/status")
+    def api_runner_status():
+        """Return whether the trading runner process is currently alive."""
+        running, pid = _runner_is_alive()
+        mode = _RUNNER_MODE_FILE.read_text().strip() if _RUNNER_MODE_FILE.exists() else "unknown"
+        return jsonify({"running": running, "pid": pid, "mode": mode})
+
+    @app.route("/api/runner/start", methods=["POST"])
+    def api_runner_start():
+        """Launch run_live.py as a background subprocess."""
+        running, pid = _runner_is_alive()
+        if running:
+            return jsonify({"started": False, "reason": "already_running", "pid": pid})
+
+        data = request.get_json(force=True, silent=True) or {}
+        mode = data.get("mode", "paper")
+        if mode not in ("paper", "live"):
+            return jsonify({"started": False, "reason": "invalid_mode"}), 400
+
+        try:
+            project_root = Path(__file__).resolve().parent.parent
+            proc = subprocess.Popen(
+                [sys.executable, str(project_root / "run_live.py"), "--mode", mode],
+                cwd=str(project_root),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            _RUNNER_PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _RUNNER_PID_FILE.write_text(str(proc.pid))
+            _RUNNER_MODE_FILE.write_text(mode)
+            logger.info("runner_started_web", extra={"pid": proc.pid, "mode": mode})
+            return jsonify({"started": True, "pid": proc.pid, "mode": mode})
+        except Exception as exc:
+            logger.error("runner_start_failed", extra={"error": str(exc)})
+            return jsonify({"started": False, "reason": str(exc)}), 500
+
+    @app.route("/api/runner/stop", methods=["POST"])
+    def api_runner_stop():
+        """Send SIGTERM to the runner process (does not exit positions)."""
+        running, pid = _runner_is_alive()
+        if not running:
+            return jsonify({"stopped": False, "reason": "not_running"})
+        try:
+            os.kill(pid, signal.SIGTERM)
+            _RUNNER_PID_FILE.unlink(missing_ok=True)
+            logger.info("runner_stopped_web", extra={"pid": pid})
+            return jsonify({"stopped": True, "pid": pid})
+        except Exception as exc:
+            logger.error("runner_stop_failed", extra={"error": str(exc)})
+            return jsonify({"stopped": False, "reason": str(exc)}), 500
 
     @app.route("/api/config/capital", methods=["POST"])
     def api_config_capital():
@@ -489,6 +553,24 @@ def _read_heartbeat() -> Optional[str]:
         except OSError:
             pass
     return None
+
+
+def _runner_is_alive() -> tuple[bool, int]:
+    """
+    Check whether the trading runner process is alive using the PID file.
+
+    Returns:
+        (is_alive: bool, pid: int)  — pid is 0 if not running.
+    """
+    if not _RUNNER_PID_FILE.exists():
+        return False, 0
+    try:
+        pid = int(_RUNNER_PID_FILE.read_text().strip())
+        os.kill(pid, 0)   # signal 0 = existence check, no actual signal sent
+        return True, pid
+    except (ValueError, ProcessLookupError, PermissionError):
+        _RUNNER_PID_FILE.unlink(missing_ok=True)
+        return False, 0
 
 
 # ── Application instance ───────────────────────────────────────────────────

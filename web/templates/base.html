@@ -228,8 +228,27 @@
 
             <div class="d-flex align-items-center gap-2">
                 <span class="text-muted small" id="last-update"></span>
+
+                <!-- ── Runner start/stop ──────────────────────────── -->
+                {% if runner_running %}
+                <span class="badge bg-success px-3 py-2" style="font-size:0.8rem;">
+                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#fff;margin-right:6px;animation:pulse 1.5s infinite;"></span>
+                    Running
+                </span>
+                <button class="btn btn-outline-danger btn-sm"
+                        onclick="stopRunner()">
+                    <i class="bi bi-stop-fill me-1"></i>Stop
+                </button>
+                {% else %}
+                <button class="btn btn-success btn-sm fw-semibold"
+                        data-bs-toggle="modal" data-bs-target="#startSystemModal">
+                    <i class="bi bi-play-fill me-1"></i>Start System
+                </button>
+                {% endif %}
+
+                <!-- ── Kill switch ────────────────────────────────── -->
                 {% if kill_switch_active %}
-                <button class="btn btn-success btn-sm"
+                <button class="btn btn-warning btn-sm fw-bold"
                         onclick="toggleKillSwitch('deactivate')">
                     <i class="bi bi-shield-check me-1"></i>Deactivate Kill Switch
                 </button>
@@ -253,6 +272,54 @@
 <div class="footer-bar d-flex justify-content-between">
     <span>Iron Condor Live Trader &mdash; Zerodha NFO</span>
     <span id="footer-time"></span>
+</div>
+
+<!-- ── Start System Modal ─────────────────────────────────────────────── -->
+<div class="modal fade" id="startSystemModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title text-success">
+                    <i class="bi bi-play-fill me-2"></i>Start Trading System
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label text-muted small mb-2">Trading Mode</label>
+                    <div class="d-flex gap-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="startMode"
+                                   id="modePaper" value="paper" checked>
+                            <label class="form-check-label" for="modePaper">
+                                <span class="fw-semibold">Paper</span>
+                                <span class="text-muted small d-block">Simulated — no real orders</span>
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="startMode"
+                                   id="modeLive" value="live">
+                            <label class="form-check-label" for="modeLive">
+                                <span class="fw-semibold text-warning">Live</span>
+                                <span class="text-muted small d-block">Real orders on NSE F&O</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div id="liveWarning" class="alert alert-warning py-2 small mb-0" style="display:none;">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                    Live mode places real NRML orders on NSE F&O via Zerodha.
+                </div>
+                <div id="startMsg" class="mt-2 small" style="display:none;"></div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success fw-bold" onclick="startSystem()">
+                    <i class="bi bi-play-fill me-1"></i>Start
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- ── Kill Switch Modal ───────────────────────────────────────────────── -->
@@ -315,6 +382,50 @@
         const reason = document.getElementById('killSwitchReason').value || 'Activated via web UI';
         await toggleKillSwitch('activate', reason);
         bootstrap.Modal.getInstance(document.getElementById('killSwitchModal')).hide();
+    }
+
+    // Show/hide live warning when mode changes
+    document.querySelectorAll('input[name="startMode"]').forEach(r => {
+        r.addEventListener('change', () => {
+            const warn = document.getElementById('liveWarning');
+            if (warn) warn.style.display = r.value === 'live' ? 'block' : 'none';
+        });
+    });
+
+    async function startSystem() {
+        const mode = document.querySelector('input[name="startMode"]:checked')?.value || 'paper';
+        const msg = document.getElementById('startMsg');
+        try {
+            const resp = await fetch('/api/runner/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({mode})
+            });
+            const data = await resp.json();
+            if (data.started) {
+                msg.innerHTML = `<span class="text-success">System started (PID ${data.pid}, ${data.mode} mode). Reloading...</span>`;
+                msg.style.display = 'block';
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                msg.innerHTML = `<span class="text-danger">Failed: ${data.reason || 'unknown error'}</span>`;
+                msg.style.display = 'block';
+            }
+        } catch(e) {
+            msg.innerHTML = `<span class="text-danger">Request failed: ${e.message}</span>`;
+            msg.style.display = 'block';
+        }
+    }
+
+    async function stopRunner() {
+        if (!confirm('Stop the trading runner? This does not exit open positions.')) return;
+        try {
+            const resp = await fetch('/api/runner/stop', {method: 'POST'});
+            const data = await resp.json();
+            if (data.stopped) window.location.reload();
+            else alert('Stop failed: ' + (data.reason || 'unknown'));
+        } catch(e) {
+            alert('Error: ' + e.message);
+        }
     }
 
     async function toggleKillSwitch(action, reason) {
