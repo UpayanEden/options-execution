@@ -262,8 +262,8 @@ def _quote_guard(ctx: GuardContext) -> GuardResult:
         # Quote age
         age_seconds = (now - quote.timestamp).total_seconds()
         data[f"{sym}_age_s"] = round(age_seconds, 1)
-        if age_seconds > 10:
-            failures.append(f"{sym}: quote age {age_seconds:.1f}s > 10s")
+        if age_seconds > 120:
+            failures.append(f"{sym}: quote age {age_seconds:.1f}s > 120s")
             continue  # stale quote; remaining checks unreliable
 
         # Bid/ask positivity
