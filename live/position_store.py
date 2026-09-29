@@ -127,10 +127,11 @@ class PositionStore:
             self._conn.execute(sql, row)
             self._conn.commit()
             logger.debug("position_upserted", extra={"symbol": pos.symbol, "state": pos.state})
-        except sqlite3.Error as exc:
-            logger.error("position_store_upsert_failed", extra={
-                "symbol": pos.symbol, "error": str(exc)
-            })
+        except Exception as exc:
+            logger.error(
+                "position_store_upsert_failed: %s — %s",
+                pos.symbol, exc, exc_info=True,
+            )
 
     def update_state(self, pos: "CondorPosition") -> None:  # noqa: F821
         """Update state and shift_count for an existing position row."""
