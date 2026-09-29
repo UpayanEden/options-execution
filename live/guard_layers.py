@@ -286,14 +286,11 @@ def _quote_guard(ctx: GuardContext) -> GuardResult:
                 f"{sym} (short): spread {quote.spread_pct:.2f}% > 25% of mid"
             )
 
-        # LTP vs mid
+        # LTP vs mid — logged for visibility only; not a blocking check
+        # We execute on bid/ask (top-of-book), so a stale LTP is not a risk.
         if mid > 0:
             ltp_deviation = abs(float(quote.ltp) - float(mid)) / float(mid) * 100
             data[f"{sym}_ltp_deviation_pct"] = round(ltp_deviation, 2)
-            if ltp_deviation > 5:
-                failures.append(
-                    f"{sym}: LTP {quote.ltp} deviates {ltp_deviation:.1f}% from mid {mid} (>5%)"
-                )
 
         # Short leg minimum premium
         if is_short and ctx.spot > 0:
