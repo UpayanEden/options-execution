@@ -171,7 +171,7 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
     # ── Strategy params ────────────────────────────────────────────────────
     strat_raw = raw.get("strategy", {})
     strategy = StrategyParams(
-        shift_trigger_pct=float(strat_raw.get("shift_trigger_pct", 1.5)),
+        shift_trigger_pct=float(strat_raw.get("shift_trigger_pct", 1.0)),
         wing_width_pct=float(strat_raw.get("wing_width_pct", 2.0)),
         min_dte=int(strat_raw.get("min_dte", 20)),
         max_dte=int(strat_raw.get("max_dte", 45)),

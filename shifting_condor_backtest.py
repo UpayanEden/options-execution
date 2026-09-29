@@ -1212,83 +1212,34 @@ def run_condor_cycle(
                     reason = "SHIFT"
                     exit_type_str = exit_type_tag
 
-                    lock_in_pct = cfg.get("lock_in_pct", DEFAULT_LOCK_IN_PCT)
                     if hit_side == "PUT_SIDE":
-                        call_orig_credit = sc_p - bc_p
-                        call_close_cost = sc_e - bc_e
-                        call_dist_pct = abs(exit_spot - sc) / sc * 100 if sc else 999
-                        close_call_too = (
-                            call_close_cost <= 0 or
-                            (call_orig_credit > 0 and
-                             call_close_cost / call_orig_credit <= lock_in_pct) or
-                            call_dist_pct <= trigger_pct * 2
-                        )
-                        if close_call_too:
-                            trigger = "PUT_SIDE_FULL"
-                        else:
-                            sc_e = bc_e = 0.0
-                            trigger = "PUT_SIDE"
+                        # Only close the put spread; retain the call spread
+                        sc_e = bc_e = 0.0
+                        trigger = "PUT_SIDE"
                     else:
-                        put_orig_credit = sp_p - bp_p
-                        put_close_cost = sp_e - bp_e
-                        put_dist_pct = abs(exit_spot - sp) / sp * 100 if sp else 999
-                        close_put_too = (
-                            put_close_cost <= 0 or
-                            (put_orig_credit > 0 and
-                             put_close_cost / put_orig_credit <= lock_in_pct) or
-                            put_dist_pct <= trigger_pct * 2
-                        )
-                        if close_put_too:
-                            trigger = "CALL_SIDE_FULL"
-                        else:
-                            sp_e = bp_e = 0.0
-                            trigger = "CALL_SIDE"
+                        # Only close the call spread; retain the put spread
+                        sp_e = bp_e = 0.0
+                        trigger = "CALL_SIDE"
                     break
             else:
                 # Legacy mode
                 hit = check_shift(spot_now, sp, sc, trigger_pct)
                 if hit:
-                    lock_in_pct = cfg.get("lock_in_pct", DEFAULT_LOCK_IN_PCT)
-
                     sp_now_val = sp_now
                     bp_now_val = bp_now
                     sc_now_val = sc_now
                     bc_now_val = bc_now
 
                     if hit == "PUT_SIDE":
+                        # Only close the put spread; retain the call spread
                         sp_e, bp_e = sp_now_val, bp_now_val
-                        call_orig_credit = sc_p - bc_p
-                        call_close_cost  = sc_now_val - bc_now_val
-                        call_dist_pct    = abs(spot_now - sc) / sc * 100 if sc else 999
-                        close_call_too   = (
-                            call_close_cost <= 0 or
-                            (call_orig_credit > 0 and
-                             call_close_cost / call_orig_credit <= lock_in_pct) or
-                            call_dist_pct <= trigger_pct * 2
-                        )
-                        if close_call_too:
-                            sc_e, bc_e = sc_now_val, bc_now_val
-                            trigger = "PUT_SIDE_FULL"
-                        else:
-                            sc_e = bc_e = 0.0
-                            trigger = "PUT_SIDE"
+                        sc_e = bc_e = 0.0
+                        trigger = "PUT_SIDE"
                     else:
+                        # Only close the call spread; retain the put spread
                         sc_e, bc_e = sc_now_val, bc_now_val
-                        put_orig_credit = sp_p - bp_p
-                        put_close_cost  = sp_now_val - bp_now_val
-                        put_dist_pct    = abs(spot_now - sp) / sp * 100 if sp else 999
-                        close_put_too   = (
-                            put_close_cost <= 0 or
-                            (put_orig_credit > 0 and
-                             put_close_cost / put_orig_credit <= lock_in_pct) or
-                            put_dist_pct <= trigger_pct * 2
-                        )
-                        if close_put_too:
-                            sp_e, bp_e = sp_now_val, bp_now_val
-                            trigger = "CALL_SIDE_FULL"
-                        else:
-                            sp_e = bp_e = 0.0
-                            trigger = "CALL_SIDE"
+                        sp_e = bp_e = 0.0
+                        trigger = "CALL_SIDE"
 
                     exit_date = tdate
                     spot_out  = spot_now

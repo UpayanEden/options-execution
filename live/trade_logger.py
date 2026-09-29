@@ -225,17 +225,21 @@ class TradeLogger:
         lots: int,
         credit: float,
         guard_report: Any,
+        put_dist_pct: float = 0.0,
+        call_dist_pct: float = 0.0,
     ) -> None:
         """
         Log a successful condor entry.
 
         Args:
-            symbol:       Underlying symbol.
-            spot:         Spot price at entry.
-            strikes_dict: Dict with keys short_put, long_put, short_call, long_call.
-            lots:         Number of lots entered.
-            credit:       Net premium credit received per share.
-            guard_report: GuardReport instance from run_all_guards().
+            symbol:        Underlying symbol.
+            spot:          Spot price at entry.
+            strikes_dict:  Dict with keys short_put, long_put, short_call, long_call.
+            lots:          Number of lots entered.
+            credit:        Net premium credit received per share.
+            guard_report:  GuardReport instance from run_all_guards().
+            put_dist_pct:  Short put distance from spot as % of spot (from StockConfig).
+            call_dist_pct: Short call distance from spot as % of spot (from StockConfig).
         """
         self.log(
             EventType.ENTRY_SUCCESS,
@@ -245,6 +249,8 @@ class TradeLogger:
                 "strikes": strikes_dict,
                 "lots": lots,
                 "credit": round(credit, 4),
+                "put_dist_pct": put_dist_pct,
+                "call_dist_pct": call_dist_pct,
                 "guard_passed": getattr(guard_report, "passed", True),
             },
         )

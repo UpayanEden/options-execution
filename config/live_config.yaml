@@ -16,7 +16,7 @@ capital:
 
 # ── Strategy parameters (shared across all stocks) ─────────────────────────
 strategy:
-  shift_trigger_pct: 1.5    # Trigger shift when spot moves 1.5% past short strike
+  shift_trigger_pct: 1.0    # Trigger shift when spot moves 1% past short strike
   wing_width_pct: 2.0       # Wing width = 2% of spot (long - short distance)
   min_dte: 20               # Minimum days to expiry at entry
   max_dte: 45               # Maximum days to expiry at entry

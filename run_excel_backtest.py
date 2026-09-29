@@ -531,6 +531,7 @@ def main() -> None:
             "auto_lots":         False,
             "capital_allocated": capital_per_sym,
             "lock_in_pct":       lock_in,
+            "hold_to_expiry":    True,
         }
 
         print(f"  [{i:3}/{len(runnable)}] {sym:<14} "

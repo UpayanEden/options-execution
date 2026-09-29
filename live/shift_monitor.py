@@ -1,6 +1,10 @@
 """
 Background daemon thread that monitors open condor positions for shift
-and take-profit conditions, checking every 30 seconds.
+conditions, checking every 30 seconds.
+
+Strategy: hold to expiry, no take-profit.  Only shift when spot breaches
+the 1% trigger zone around a short strike.  Only the threatened side's
+spread is closed and re-entered; the other spread is left untouched.
 
 The kill switch is checked at the start of every iteration so the system
 can be halted immediately without waiting for the next poll cycle.
@@ -12,8 +16,7 @@ Usage::
         positions=positions_list,
         config=live_cfg,
         logger=trade_logger,
-        on_shift_cb=condor_runner.shift_condor,
-        on_take_profit_cb=condor_runner.exit_condor,
+        on_shift_cb=condor_runner.shift_condor,   # called as on_shift_cb(pos, "PUT"|"CALL")
     )
     monitor.start()
     # ... trading session ...
@@ -51,32 +54,29 @@ class ShiftMonitor:
         positions: List[Any],
         config: LiveConfig,
         logger_: TradeLogger,
-        on_shift_cb: Callable[[Any], Optional[Any]],
-        on_take_profit_cb: Callable[[Any, str], None],
+        on_shift_cb: Callable[[Any, str], None],
         kill_switch: Optional[KillSwitch] = None,
     ) -> None:
         """
         Initialise the shift monitor.
 
         Args:
-            broker:             Broker adapter for live quotes.
-            positions:          Mutable list of CondorPosition objects to monitor.
-                                The CondorRunner owns this list and may append/remove
-                                positions concurrently; access is protected by _lock.
-            config:             Live trading config.
-            logger_:            TradeLogger instance for structured event logging.
-            on_shift_cb:        Callback invoked with (CondorPosition,) when a shift
-                                is triggered. Should return the new CondorPosition or None.
-            on_take_profit_cb:  Callback invoked with (CondorPosition, reason) when
-                                take-profit fires.
-            kill_switch:        KillSwitch instance. If None, a new one is created.
+            broker:       Broker adapter for live quotes.
+            positions:    Mutable list of CondorPosition objects to monitor.
+                          The CondorRunner owns this list and may append/remove
+                          positions concurrently; access is protected by _lock.
+            config:       Live trading config.
+            logger_:      TradeLogger instance for structured event logging.
+            on_shift_cb:  Callback invoked as on_shift_cb(pos, trigger_side) where
+                          trigger_side is "PUT" or "CALL".  The runner closes only
+                          the threatened spread and re-enters it at new strikes.
+            kill_switch:  KillSwitch instance. If None, a new one is created.
         """
         self._broker = broker
         self._positions = positions
         self._config = config
         self._trade_logger = logger_
         self._on_shift_cb = on_shift_cb
-        self._on_take_profit_cb = on_take_profit_cb
         self._kill_switch = kill_switch or KillSwitch()
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
@@ -174,12 +174,11 @@ class ShiftMonitor:
                 logger.debug("position_ok", extra={"symbol": symbol})
                 return
 
-            if reason.startswith("TAKE_PROFIT"):
-                logger.info("take_profit_triggered", extra={"symbol": symbol, "reason": reason})
-                self._on_take_profit_cb(pos, reason)
-            elif reason.startswith("SHIFT"):
-                logger.warning("shift_triggered", extra={"symbol": symbol, "reason": reason})
-                self._on_shift_cb(pos)
+            if reason.startswith("SHIFT"):
+                # Extract which side triggered: "SHIFT_PUT:..." → "PUT"
+                trigger_side = "PUT" if "PUT" in reason else "CALL"
+                logger.warning("shift_triggered", extra={"symbol": symbol, "reason": reason, "side": trigger_side})
+                self._on_shift_cb(pos, trigger_side)
         except BrokerError as exc:
             logger.error(
                 "shift_monitor_broker_error",
@@ -195,12 +194,11 @@ class ShiftMonitor:
 
     def _check_position(self, pos: Any) -> Tuple[bool, str]:
         """
-        Evaluate a single CondorPosition for action triggers.
+        Evaluate a single CondorPosition for shift triggers.
 
-        Conditions checked (in priority order):
-        1. TAKE_PROFIT: current_cost <= (1 - premium_pct) × initial_credit
-        2. SHIFT_PUT:   spot < short_put_strike × (1 - shift_trigger_pct/100)
-        3. SHIFT_CALL:  spot > short_call_strike × (1 + shift_trigger_pct/100)
+        No take-profit — the strategy holds to expiry.  Only checks:
+          SHIFT_PUT:   spot < short_put_strike × (1 - shift_trigger_pct/100)
+          SHIFT_CALL:  spot > short_call_strike × (1 + shift_trigger_pct/100)
 
         Args:
             pos: CondorPosition dataclass.
@@ -211,57 +209,11 @@ class ShiftMonitor:
         """
         symbol: str = getattr(pos, "symbol", "UNKNOWN")
 
-        # ── Fetch live quotes for all four legs ────────────────────────────
-        legs_instruments = [
-            pos.long_put,
-            pos.short_put,
-            pos.short_call,
-            pos.long_call,
-        ]
-        instrument_pairs = [
-            (inst.instrument_token, inst.trading_symbol)
-            for inst in legs_instruments
-        ]
-        try:
-            quotes: Dict[int, Any] = self._broker.get_quotes(instrument_pairs)
-        except QuoteError as exc:
-            logger.warning(
-                "shift_monitor_quote_error",
-                extra={"symbol": symbol, "error": str(exc)},
-            )
-            return False, ""
-
-        # ── Current spot price ─────────────────────────────────────────────
-        # Derive spot from underlying index or use last known value
-        spot = self._get_current_spot(pos, quotes)
+        # ── Fetch live spot price ──────────────────────────────────────────
+        spot = self._get_current_spot(pos, {})
         if spot is None or spot <= 0:
             logger.warning("shift_monitor_no_spot", extra={"symbol": symbol})
             return False, ""
-
-        # ── Take-profit check ──────────────────────────────────────────────
-        # Find the stock config for premium_pct
-        premium_pct = 0.4  # default
-        for stock_cfg in self._config.stocks:
-            if stock_cfg.symbol == symbol:
-                premium_pct = stock_cfg.premium_pct
-                break
-
-        initial_credit = float(getattr(pos, "initial_credit", 0) or 0)
-        if initial_credit > 0:
-            # Sum current ask prices of short legs (cost to buy back)
-            # Sum current bid prices of long legs (proceeds from selling)
-            current_cost = self._compute_current_cost(pos, quotes)
-            take_profit_threshold = (1.0 - premium_pct) * initial_credit
-            if current_cost <= take_profit_threshold and current_cost >= 0:
-                profit_pct = (1.0 - current_cost / initial_credit) * 100.0
-                self._trade_logger.log_take_profit(
-                    symbol=symbol,
-                    credit_received=initial_credit,
-                    current_cost=current_cost,
-                    profit_pct=profit_pct,
-                    pnl=(initial_credit - current_cost) * pos.lots * pos.lot_size,
-                )
-                return True, f"TAKE_PROFIT: cost={current_cost:.4f} <= threshold={take_profit_threshold:.4f}"
 
         # ── Shift checks ───────────────────────────────────────────────────
         shift_trigger_pct = self._config.strategy.shift_trigger_pct
@@ -307,82 +259,27 @@ class ShiftMonitor:
 
     # ── Helper methods ─────────────────────────────────────────────────────
 
-    def _get_current_spot(self, pos: Any, quotes: Dict[int, Any]) -> Optional[float]:
+    def _get_current_spot(self, pos: Any, _quotes: Dict[int, Any]) -> Optional[float]:
         """
-        Derive the current spot price for the underlying.
+        Fetch the current spot price for the underlying equity.
 
-        Tries to get the underlying spot from the broker.  Falls back to
-        the average of short put and short call strikes (geometric centre
-        of the condor) if the index quote is unavailable.
+        Tries the NSE equity quote first (e.g. "NSE:RELIANCE").  Falls back
+        to the spot recorded at entry if the live fetch fails.
 
         Args:
-            pos:    CondorPosition dataclass.
-            quotes: Latest option quotes keyed by instrument token.
+            pos:     CondorPosition dataclass.
+            _quotes: Unused; kept for call-site compatibility.
 
         Returns:
             Current spot price or None if unavailable.
         """
         try:
-            # Try fetching the underlying equity/index quote
             underlying = getattr(pos, "underlying", "")
-            if hasattr(self._broker, "get_index_token"):
-                idx_token = self._broker.get_index_token(underlying)
-                if idx_token:
-                    idx_quotes = self._broker.get_quotes([(idx_token, underlying)])
-                    if idx_token in idx_quotes:
-                        return float(idx_quotes[idx_token].ltp)
+            eq_quotes = self._broker.get_quotes([(0, f"NSE:{underlying}")])
+            for q in eq_quotes.values():
+                if float(q.ltp) > 0:
+                    return float(q.ltp)
         except Exception:
             pass
 
-        # Fallback: derive from option LTPs using midpoint of short strikes
-        short_put_token = pos.short_put.instrument_token
-        short_call_token = pos.short_call.instrument_token
-        if short_put_token in quotes and short_call_token in quotes:
-            sp_ltp = float(quotes[short_put_token].ltp)
-            sc_ltp = float(quotes[short_call_token].ltp)
-            if sp_ltp > 0 or sc_ltp > 0:
-                # Use last known spot from the position
-                return float(getattr(pos, "spot_at_entry", 0) or 0)
-
         return float(getattr(pos, "spot_at_entry", 0) or 0)
-
-    def _compute_current_cost(self, pos: Any, quotes: Dict[int, Any]) -> float:
-        """
-        Compute the current cost to close all four legs of the condor.
-
-        Cost = (buy back shorts at ask) - (sell hedges at bid).
-        For a credit spread, closing cost < initial credit means profit.
-
-        Args:
-            pos:    CondorPosition dataclass.
-            quotes: Latest quotes keyed by instrument token.
-
-        Returns:
-            Net cost per share to close the condor (positive = debit).
-        """
-        cost = 0.0
-
-        # Buy back short legs (pay ask)
-        for short_inst in [pos.short_put, pos.short_call]:
-            q = quotes.get(short_inst.instrument_token)
-            if q:
-                cost += float(q.ask)
-            else:
-                logger.warning(
-                    "close_cost_no_quote",
-                    extra={"token": short_inst.instrument_token, "symbol": short_inst.trading_symbol},
-                )
-                cost += float(short_inst.strike) * 0.001  # rough fallback
-
-        # Sell hedge legs (receive bid)
-        for hedge_inst in [pos.long_put, pos.long_call]:
-            q = quotes.get(hedge_inst.instrument_token)
-            if q:
-                cost -= float(q.bid)
-            else:
-                logger.warning(
-                    "close_cost_no_quote",
-                    extra={"token": hedge_inst.instrument_token, "symbol": hedge_inst.trading_symbol},
-                )
-
-        return cost

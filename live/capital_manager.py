@@ -121,17 +121,16 @@ class CapitalManager:
         Returns:
             Estimated required margin in INR.
         """
-        wing_width_inr = spot * wing_width_pct / 100.0
-        notional = wing_width_inr * lot_size * lots
-        margin = notional * _SPAN_BUFFER
+        notional = spot * lot_size * lots
+        margin = notional * 0.125  # 12.5% of notional — standard SPAN margin estimate
         logger.debug(
             "margin_estimated",
             extra={
                 "spot": spot,
                 "lot_size": lot_size,
                 "lots": lots,
-                "wing_width_pct": wing_width_pct,
-                "wing_width_inr": round(wing_width_inr, 2),
+                "notional": round(notional, 2),
+                "margin_pct": 12.5,
                 "margin": round(margin, 2),
             },
         )
@@ -301,3 +300,66 @@ class CapitalManager:
             },
         )
         return result
+
+    @staticmethod
+    def compute_available_from_margins(margins: dict) -> float:
+        """
+        Derive effective available capital from a Zerodha margins() response.
+
+        Selection logic:
+          - Only cash present  → use cash balance
+          - Only stock (collateral) present → use stock collateral
+          - Both present → use 50% cash + 50% collateral
+
+        Args:
+            margins: Raw dict from kite.margins() or broker.get_margins().
+
+        Returns:
+            Effective capital in INR.
+        """
+        equity = margins.get("equity", {})
+        available = equity.get("available", {})
+        cash = float(available.get("live_balance", 0) or 0)
+        stock = float(available.get("collateral", 0) or 0)
+
+        if stock <= 0:
+            effective = cash
+            source = "cash_only"
+        elif cash <= 0:
+            effective = stock
+            source = "stock_only"
+        else:
+            effective = cash * 0.5 + stock * 0.5
+            source = "50_50_split"
+
+        logger.info(
+            "capital_from_margins",
+            extra={
+                "cash_balance": round(cash, 2),
+                "stock_collateral": round(stock, 2),
+                "effective_capital": round(effective, 2),
+                "source": source,
+            },
+        )
+        return effective
+
+    def update_from_broker_margins(self, margins: dict) -> float:
+        """
+        Update total_capital from actual broker margin data.
+
+        Should be called at session start before any positions are entered.
+
+        Args:
+            margins: Raw dict from broker.get_margins().
+
+        Returns:
+            New total_capital value.
+        """
+        effective = self.compute_available_from_margins(margins)
+        if effective > 0:
+            self._config.total_capital = effective
+            logger.info(
+                "total_capital_updated_from_broker",
+                extra={"new_total_capital": round(effective, 2)},
+            )
+        return effective

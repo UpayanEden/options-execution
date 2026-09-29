@@ -72,6 +72,8 @@ def create_app() -> Flask:
         pnl_summary = _compute_pnl_summary(positions)
         win_rate = _compute_win_rate()
         shifts_today = _count_today_shifts()
+        cfg_raw = yaml.safe_load(_load_config_yaml()) or {}
+        capital_info = cfg_raw.get("capital", {})
         return render_template(
             "dashboard.html",
             positions=positions,
@@ -81,6 +83,7 @@ def create_app() -> Flask:
             shifts_today=shifts_today,
             kill_switch_active=_KILL_SWITCH_FLAG.exists(),
             now=datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
+            capital_info=capital_info,
         )
 
     @app.route("/positions")
@@ -207,6 +210,25 @@ def create_app() -> Flask:
             logger.info("kill_switch_deactivated_web")
             return jsonify({"deactivated": True})
         return jsonify({"deactivated": False, "message": "Kill switch was not active"})
+
+    @app.route("/api/config/capital", methods=["POST"])
+    def api_config_capital():
+        """Update total_capital in live_config.yaml via JSON POST."""
+        data = request.get_json(force=True, silent=True) or {}
+        capital = data.get("total_capital")
+        if capital is None:
+            return jsonify({"error": "total_capital field required"}), 400
+        try:
+            capital = float(capital)
+            if capital <= 0:
+                return jsonify({"error": "total_capital must be positive"}), 400
+        except (TypeError, ValueError):
+            return jsonify({"error": "total_capital must be a number"}), 400
+
+        success = _update_config_capital(capital)
+        if success:
+            return jsonify({"updated": True, "total_capital": capital})
+        return jsonify({"error": "Failed to update config"}), 500
 
     return app
 
@@ -470,6 +492,38 @@ def _read_heartbeat() -> Optional[str]:
 
 
 # ── Application instance ───────────────────────────────────────────────────
+
+
+def _update_config_capital(new_capital: float) -> bool:
+    """
+    Update total_capital in live_config.yaml.
+
+    Args:
+        new_capital: New total capital value in INR.
+
+    Returns:
+        True on success, False on error.
+    """
+    try:
+        if _CONFIG_PATH.exists():
+            raw = _CONFIG_PATH.read_text(encoding="utf-8")
+        else:
+            return False
+        import re
+        # Replace the total_capital line
+        updated = re.sub(
+            r"(total_capital\s*:\s*)\d+",
+            lambda m: m.group(1) + str(int(new_capital)),
+            raw,
+        )
+        _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _CONFIG_PATH.write_text(updated, encoding="utf-8")
+        logger.info("config_capital_updated", extra={"new_capital": new_capital})
+        return True
+    except Exception as exc:
+        logger.error("config_capital_update_failed", extra={"error": str(exc)})
+        return False
+
 
 app = create_app()
 
