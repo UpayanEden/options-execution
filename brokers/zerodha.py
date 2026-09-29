@@ -636,6 +636,21 @@ class ZerodhaBroker(BrokerAdapter):
         """Return the Zerodha instrument token for a known NSE index, else None."""
         return self._INDEX_TOKENS.get(underlying.upper())
 
+    def get_equity_spot(self, symbol: str) -> Optional[float]:
+        """
+        Fetch the current LTP of an NSE equity (e.g. 'RELIANCE') using the
+        NSE: exchange prefix.  Returns None on any error.
+        """
+        try:
+            key = f"NSE:{symbol.upper()}"
+            raw = self._kite.quote([key])
+            data = raw.get(key, {})
+            ltp = data.get("last_price", 0)
+            return float(ltp) if ltp else None
+        except Exception as exc:
+            logger.warning("equity_spot_failed", extra={"symbol": symbol, "error": str(exc)})
+            return None
+
     def get_historical_data(
         self,
         instrument_token: int,

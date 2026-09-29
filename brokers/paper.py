@@ -96,6 +96,12 @@ class PaperBroker(BrokerAdapter):
             return self._source.get_index_token(underlying)
         return None
 
+    def get_equity_spot(self, symbol: str):
+        """Delegate to live source broker."""
+        if hasattr(self._source, "get_equity_spot"):
+            return self._source.get_equity_spot(symbol)
+        return None
+
     def _load_instruments(self, force_refresh: bool = False) -> list:
         """Delegate to live source broker."""
         if hasattr(self._source, "_load_instruments"):

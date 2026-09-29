@@ -1108,8 +1108,8 @@ class CondorRunner:
         """
         Fetch the current spot price for *symbol*.
 
-        Tries the broker's index token first (for indices), then falls
-        back to the underlying equity quote on NSE.
+        Tries index token first (for NIFTY / BANKNIFTY etc.), then
+        uses get_equity_spot() for NSE equities (NSE: prefix).
 
         Args:
             symbol: NSE symbol.
@@ -1118,26 +1118,19 @@ class CondorRunner:
             Spot price as float, or None if unavailable.
         """
         try:
+            # ── Index (e.g. NIFTY) ────────────────────────────────────────
             if hasattr(self._broker, "get_index_token"):
                 idx_token = self._broker.get_index_token(symbol)  # type: ignore[attr-defined]
                 if idx_token:
                     quotes = self._broker.get_quotes([(idx_token, symbol)])
                     if idx_token in quotes:
                         return float(quotes[idx_token].ltp)
-            # Try NSE equity quote
-            # We need the token — search instruments for the equity
-            instruments = self._broker._load_instruments() if hasattr(self._broker, "_load_instruments") else []  # type: ignore[attr-defined]
-            for inst in instruments:
-                if (
-                    str(inst.get("tradingsymbol", "")).upper() == symbol.upper()
-                    and inst.get("exchange", "") == "NSE"
-                    and inst.get("instrument_type", "") == "EQ"
-                ):
-                    token = int(inst.get("instrument_token", 0))
-                    if token:
-                        quotes = self._broker.get_quotes([(token, symbol)])
-                        if token in quotes:
-                            return float(quotes[token].ltp)
+
+            # ── NSE equity (uses NSE: prefix, not NFO:) ────────────────────
+            if hasattr(self._broker, "get_equity_spot"):
+                spot = self._broker.get_equity_spot(symbol)  # type: ignore[attr-defined]
+                if spot:
+                    return spot
         except Exception as exc:
             logger.warning("spot_fetch_failed", extra={"symbol": symbol, "error": str(exc)})
         return None
