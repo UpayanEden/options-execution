@@ -13,6 +13,7 @@ All order placements go through run_all_guards() — never bypassed.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
@@ -160,6 +161,14 @@ class CondorRunner:
             logger.critical("session_aborted_kill_switch")
             return
 
+        # ── Recover existing open positions from DB ────────────────────────
+        # This ensures a token refresh + re-start never re-enters positions
+        # that are already live on the broker.
+        recovered = self._recover_positions()
+        for pos in recovered:
+            self._positions.append(pos)
+        already_open: set[str] = {pos.symbol for pos in self._positions}
+
         # ── Entry phase ────────────────────────────────────────────────────
         now = datetime.now(IST)
         entry_start = self._config.strategy.entry_start
@@ -179,10 +188,14 @@ class CondorRunner:
                 if len(self._positions) >= self._config.capital.max_open_positions:
                     logger.info("max_positions_reached", extra={"count": len(self._positions)})
                     break
+                if stock_cfg.symbol in already_open:
+                    logger.info("skipping_existing_position", extra={"symbol": stock_cfg.symbol})
+                    continue
                 try:
                     pos = self.enter_condor(stock_cfg)
                     if pos:
                         self._positions.append(pos)
+                        already_open.add(pos.symbol)
                 except Exception as exc:
                     logger.exception(
                         "entry_error",
@@ -956,6 +969,136 @@ class CondorRunner:
                 "close_debit": round(close_debit, 4),
                 "new_credit":  round(new_side_credit, 4),
             },
+        )
+
+    # ── Session recovery ───────────────────────────────────────────────────
+
+    def _recover_positions(self) -> List[CondorPosition]:
+        """
+        Load OPEN/SHIFTING positions from the DB and reconstruct CondorPosition
+        objects so monitoring resumes without re-entering.
+
+        Called at the very start of run_session() before the entry loop.
+        Also re-allocates capital for each recovered position so the
+        CapitalManager's accounting stays accurate.
+
+        Returns:
+            List of reconstructed CondorPosition objects (may be empty).
+        """
+        rows = self._position_store.load_open_positions()
+        if not rows:
+            logger.info("no_positions_to_recover")
+            return []
+
+        recovered: List[CondorPosition] = []
+        for row in rows:
+            symbol = row.get("symbol", "?")
+            try:
+                pos = self._row_to_position(row)
+                # Re-allocate capital so CapitalManager tracks this correctly
+                required_margin = self._capital_manager.estimate_margin(
+                    pos.spot_at_entry, pos.lot_size, pos.lots,
+                    self._config.strategy.wing_width_pct,
+                )
+                self._capital_manager.allocate(pos.symbol, required_margin)
+                recovered.append(pos)
+                logger.info(
+                    "position_recovered",
+                    extra={
+                        "symbol": pos.symbol,
+                        "expiry": str(pos.expiry),
+                        "state": pos.state,
+                        "shift_count": pos.shift_count,
+                        "short_put": float(pos.short_put.strike),
+                        "short_call": float(pos.short_call.strike),
+                    },
+                )
+            except Exception as exc:
+                logger.error(
+                    "position_recovery_failed",
+                    extra={"symbol": symbol, "error": str(exc)},
+                    exc_info=True,
+                )
+
+        if recovered:
+            logger.info("session_recovery_complete", extra={"recovered": len(recovered)})
+        return recovered
+
+    def _row_to_position(self, row: dict) -> CondorPosition:
+        """
+        Reconstruct a CondorPosition dataclass from a flat DB row dict.
+
+        Handles both the full JSON (written at entry, includes option_type)
+        and the compact JSON (written on shift, no option_type) by inferring
+        option_type from the leg key name when absent.
+
+        Args:
+            row: Dict from PositionStore.load_open_positions().
+
+        Returns:
+            Reconstructed CondorPosition.
+        """
+        from execution.models import OptionType, ResolvedInstrument
+
+        symbol = str(row["symbol"])
+        lot_size = int(row["lot_size"])
+        expiry = date.fromisoformat(str(row["expiry"]))
+
+        def _parse_leg(raw, leg_key: str) -> ResolvedInstrument:
+            data = json.loads(raw) if isinstance(raw, str) else raw
+            # option_type present in entry JSON; absent in shift-compact JSON
+            if "option_type" in data:
+                opt = OptionType(str(data["option_type"]).upper())
+            elif "put" in leg_key:
+                opt = OptionType.PE
+            else:
+                opt = OptionType.CE
+            return ResolvedInstrument(
+                instrument_token=int(data["instrument_token"]),
+                trading_symbol=str(data["trading_symbol"]),
+                exchange="NFO",
+                underlying=symbol,
+                expiry=expiry,
+                strike=Decimal(str(data["strike"])),
+                option_type=opt,
+                lot_size=lot_size,
+                tick_size=Decimal("0.05"),
+            )
+
+        entry_time_raw = row["entry_time"]
+        if isinstance(entry_time_raw, str):
+            entry_time = datetime.fromisoformat(entry_time_raw)
+            if entry_time.tzinfo is None:
+                entry_time = entry_time.replace(tzinfo=IST)
+        else:
+            entry_time = entry_time_raw
+
+        broker_ids_raw = row.get("broker_order_ids") or "[]"
+        broker_order_ids: List[str] = []
+        if isinstance(broker_ids_raw, str):
+            try:
+                broker_order_ids = json.loads(broker_ids_raw)
+            except (json.JSONDecodeError, ValueError):
+                broker_order_ids = []
+        elif isinstance(broker_ids_raw, list):
+            broker_order_ids = broker_ids_raw
+
+        return CondorPosition(
+            symbol=symbol,
+            underlying=symbol,
+            expiry=expiry,
+            spot_at_entry=float(row["spot_at_entry"]),
+            short_put=_parse_leg(row["short_put"], "short_put"),
+            long_put=_parse_leg(row["long_put"], "long_put"),
+            short_call=_parse_leg(row["short_call"], "short_call"),
+            long_call=_parse_leg(row["long_call"], "long_call"),
+            lots=int(row["lots"]),
+            lot_size=lot_size,
+            initial_credit=float(row.get("initial_credit", 0) or 0),
+            entry_time=entry_time,
+            shift_count=int(row.get("shift_count", 0) or 0),
+            broker_order_ids=broker_order_ids,
+            state=str(row.get("state", "OPEN")),
         )
 
     # ── Strike/Expiry helpers ──────────────────────────────────────────────
