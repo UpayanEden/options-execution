@@ -112,6 +112,12 @@ Examples:
         help="Start only the Flask web dashboard; do not start the trading runner.",
     )
     parser.add_argument(
+        "--runner-only",
+        action="store_true",
+        help="Start only the trading runner; skip the web dashboard. "
+             "Used when the dashboard is already running (e.g. via gunicorn).",
+    )
+    parser.add_argument(
         "--list-symbols",
         action="store_true",
         help="List all enabled symbols from live_config.yaml and exit.",
@@ -339,10 +345,11 @@ def main() -> None:
 
     threads: list[threading.Thread] = []
 
-    # ── Start web server ───────────────────────────────────────────────────
-    web_thread = _start_web_server(port=args.web_port)
-    threads.append(web_thread)
-    print(f"[run_live] Web dashboard started: http://localhost:{args.web_port}")
+    # ── Start web server (skipped in --runner-only mode) ───────────────────
+    if not args.runner_only:
+        web_thread = _start_web_server(port=args.web_port)
+        threads.append(web_thread)
+        print(f"[run_live] Web dashboard started: http://localhost:{args.web_port}")
 
     if args.web_only:
         print("[run_live] --web-only mode: trading runner not started.")

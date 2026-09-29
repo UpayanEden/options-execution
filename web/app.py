@@ -245,7 +245,7 @@ def create_app() -> Flask:
         try:
             project_root = Path(__file__).resolve().parent.parent
             proc = subprocess.Popen(
-                [sys.executable, str(project_root / "run_live.py"), "--mode", mode],
+                [sys.executable, str(project_root / "run_live.py"), "--mode", mode, "--runner-only"],
                 cwd=str(project_root),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
