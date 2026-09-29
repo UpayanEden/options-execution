@@ -102,6 +102,19 @@ class PaperBroker(BrokerAdapter):
             return self._source.get_equity_spot(symbol)
         return None
 
+    def place_order_from_model(self, order: Order) -> str:
+        """
+        Simulate an order fill using the current live quote.
+        Returns a paper order ID string.
+        """
+        quote = self._source.get_quote(order.instrument_token, order.trading_symbol)
+        updated, fill = self.simulate_order(order, quote)
+        oid = updated.broker_order_id or f"PAPER_{order.order_id}"
+        self._orders[str(oid)] = updated
+        if fill:
+            self._fills.append(fill)
+        return str(oid)
+
     def _load_instruments(self, force_refresh: bool = False) -> list:
         """Delegate to live source broker."""
         if hasattr(self._source, "_load_instruments"):
