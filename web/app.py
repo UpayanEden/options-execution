@@ -307,11 +307,14 @@ def create_app() -> Flask:
 
         try:
             project_root = Path(__file__).resolve().parent.parent
+            log_dir = project_root / "logs" / "live"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            runner_log = open(log_dir / "runner_stdout.log", "a")
             proc = subprocess.Popen(
                 [sys.executable, str(project_root / "run_live.py"), "--mode", mode, "--runner-only"],
                 cwd=str(project_root),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=runner_log,
+                stderr=runner_log,
                 start_new_session=True,
             )
             _RUNNER_PID_FILE.parent.mkdir(parents=True, exist_ok=True)

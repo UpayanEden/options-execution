@@ -420,13 +420,23 @@ class CondorRunner:
 
         try:
             margins_data = self._broker.get_margins()
-            available_margin = float(
-                (margins_data.get("equity", {}) or margins_data).get("available", {}).get(
-                    "live_balance", 0
-                ) or 0
-            )
+            equity_avail = (margins_data.get("equity", {}) or margins_data).get("available", {})
+            cash_margin = float(equity_avail.get("live_balance", 0) or 0)
+            stock_margin = float(equity_avail.get("collateral", 0) or 0)
+            if stock_margin <= 0:
+                available_margin = cash_margin
+                margin_source = "cash_only"
+            elif cash_margin <= 0:
+                available_margin = stock_margin
+                margin_source = "stock_only"
+            else:
+                available_margin = cash_margin * 0.5 + stock_margin * 0.5
+                margin_source = "50_50_split"
         except BrokerError:
+            cash_margin = 0.0
+            stock_margin = 0.0
             available_margin = 0.0
+            margin_source = ""
 
         required_margin = self._capital_manager.estimate_margin(
             spot, lot_size, lots, self._config.strategy.wing_width_pct
@@ -568,6 +578,10 @@ class CondorRunner:
             guard_report=guard_report,
             put_dist_pct=stock.put_dist_pct,
             call_dist_pct=stock.call_dist_pct,
+            cash_margin=cash_margin,
+            stock_margin=stock_margin,
+            margin_source=margin_source,
+            required_margin=required_margin,
         )
 
         logger.info(

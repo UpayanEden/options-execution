@@ -227,20 +227,34 @@ class TradeLogger:
         guard_report: Any,
         put_dist_pct: float = 0.0,
         call_dist_pct: float = 0.0,
+        cash_margin: float = 0.0,
+        stock_margin: float = 0.0,
+        margin_source: str = "",
+        required_margin: float = 0.0,
     ) -> None:
         """
         Log a successful condor entry.
 
         Args:
-            symbol:        Underlying symbol.
-            spot:          Spot price at entry.
-            strikes_dict:  Dict with keys short_put, long_put, short_call, long_call.
-            lots:          Number of lots entered.
-            credit:        Net premium credit received per share.
-            guard_report:  GuardReport instance from run_all_guards().
-            put_dist_pct:  Short put distance from spot as % of spot (from StockConfig).
-            call_dist_pct: Short call distance from spot as % of spot (from StockConfig).
+            symbol:          Underlying symbol.
+            spot:            Spot price at entry.
+            strikes_dict:    Dict with keys short_put, long_put, short_call, long_call.
+            lots:            Number of lots entered.
+            credit:          Net premium credit received per share.
+            guard_report:    GuardReport instance from run_all_guards().
+            put_dist_pct:    Short put distance from spot as % of spot (from StockConfig).
+            call_dist_pct:   Short call distance from spot as % of spot (from StockConfig).
+            cash_margin:     Available cash balance (live_balance) from broker.
+            stock_margin:    Available stock collateral from broker.
+            margin_source:   How margin was sourced: cash_only / stock_only / 50_50_split.
+            required_margin: Estimated margin required for this trade.
         """
+        # Compute actual strike distances from spot for reference
+        short_put_strike = strikes_dict.get("short_put", 0)
+        short_call_strike = strikes_dict.get("short_call", 0)
+        actual_put_dist_pct = round(abs(spot - short_put_strike) / spot * 100, 2) if spot else 0.0
+        actual_call_dist_pct = round(abs(short_call_strike - spot) / spot * 100, 2) if spot else 0.0
+
         self.log(
             EventType.ENTRY_SUCCESS,
             symbol,
@@ -251,6 +265,12 @@ class TradeLogger:
                 "credit": round(credit, 4),
                 "put_dist_pct": put_dist_pct,
                 "call_dist_pct": call_dist_pct,
+                "actual_put_dist_pct": actual_put_dist_pct,
+                "actual_call_dist_pct": actual_call_dist_pct,
+                "required_margin": round(required_margin, 2),
+                "cash_margin": round(cash_margin, 2),
+                "stock_margin": round(stock_margin, 2),
+                "margin_source": margin_source,
                 "guard_passed": getattr(guard_report, "passed", True),
             },
         )
