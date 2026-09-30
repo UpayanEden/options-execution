@@ -148,6 +148,7 @@
                         <th>Lots</th>
                         <th>Credit</th>
                         <th>P&amp;L</th>
+                        <th>Shift Cost</th>
                         <th>Shifts</th>
                         <th class="pe-3">Entry Time</th>
                     </tr>
@@ -186,6 +187,9 @@
                         <td>{{ pos.get('lots', '—') }}</td>
                         <td class="pnl-positive">{{ "₹{:.2f}".format(pos.get('initial_credit', 0) or 0) }}</td>
                         <td id="pnl-{{ pos.get('symbol', '') }}" data-symbol="{{ pos.get('symbol', '') }}">
+                            <span class="text-muted small">—</span>
+                        </td>
+                        <td id="shift-cost-{{ pos.get('symbol', '') }}">
                             <span class="text-muted small">—</span>
                         </td>
                         <td>{{ pos.get('shift_count', 0) }}</td>
@@ -328,6 +332,52 @@ async function refreshLivePnl() {
 // Fetch immediately on load, then every 60 seconds
 refreshLivePnl();
 setInterval(refreshLivePnl, 60000);
+
+// ── Shift cost per position ───────────────────────────────────────────────
+async function refreshShiftCost() {
+    try {
+        const resp = await fetch('/api/shift_cost', {cache: 'no-store'});
+        const data = await resp.json();
+        for (const pos of (data.positions || [])) {
+            const cell = document.getElementById(`shift-cost-${pos.symbol}`);
+            if (!cell) continue;
+
+            if (pos.error) {
+                cell.innerHTML = '<span class="text-muted small">—</span>';
+                continue;
+            }
+
+            // Pick the threatened side to display
+            const side = pos.threatened_side === 'PUT' ? pos.put_side : pos.call_side;
+            const triggered = pos.put_triggered || pos.call_triggered;
+            const net = side?.net_total;
+            const label = pos.threatened_side;
+
+            if (net == null) {
+                cell.innerHTML = '<span class="text-muted small">—</span>';
+                continue;
+            }
+
+            const isDebit  = net > 0;
+            const cls      = isDebit ? 'style="color:#ff3d71;font-weight:600;"'
+                                     : 'style="color:#00d68f;font-weight:600;"';
+            const sign     = isDebit ? '' : '+';
+            const amt      = Math.abs(net).toLocaleString('en-IN', {maximumFractionDigits: 0});
+            const icon     = triggered ? '⚡ ' : '';
+            const typeStr  = isDebit ? 'debit' : 'credit';
+
+            cell.innerHTML = `
+                <span ${cls}>${icon}${label}</span>
+                <span ${cls}> ₹${sign}${amt}</span>
+                <div style="font-size:0.68rem;color:#9aa8bc;">${typeStr} if shifted now</div>`;
+        }
+    } catch(e) {
+        console.error('refreshShiftCost failed:', e);
+    }
+}
+
+refreshShiftCost();
+setInterval(refreshShiftCost, 60000);
 
 // Load recent events via API on page load
 (async function () {
