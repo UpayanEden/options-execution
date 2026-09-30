@@ -61,6 +61,66 @@
     .dist-warn  { color: #ffaa00; }
     .dist-alert { color: #ff3d71; font-weight: 700; }
     .loading-placeholder { color: #a0acc0; font-size: 0.8rem; }
+
+    /* ── Shift Estimator ──────────────────────────────────────────── */
+    .shift-panel {
+        background: rgba(255, 170, 0, 0.05);
+        border: 1px solid rgba(255, 170, 0, 0.2);
+        border-radius: 8px;
+        padding: 0.85rem 1rem;
+        margin-top: 0.75rem;
+    }
+    .shift-panel .section-title {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #ffaa00;
+        font-weight: 600;
+        margin-bottom: 0.6rem;
+    }
+    .shift-side-card {
+        background: rgba(0,0,0,0.25);
+        border-radius: 6px;
+        padding: 0.7rem 0.85rem;
+    }
+    .shift-side-card.threatened {
+        border: 1px solid rgba(255,61,113,0.4);
+        background: rgba(255,61,113,0.06);
+    }
+    .shift-side-card.safe {
+        border: 1px solid rgba(0,214,143,0.2);
+    }
+    .shift-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.78rem;
+        line-height: 1.7;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .shift-row:last-child { border-bottom: none; }
+    .shift-row .lbl { color: #c0cce0; }
+    .shift-row .val { font-weight: 600; color: #ffffff; }
+    .shift-net-cost {
+        font-size: 1rem;
+        font-weight: 700;
+        margin-top: 0.5rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    .shift-net-debit  { color: #ff3d71; }
+    .shift-net-credit { color: #00d68f; }
+    .shift-triggered-badge {
+        display: inline-block;
+        padding: 1px 7px;
+        border-radius: 4px;
+        font-size: 0.68rem;
+        font-weight: 700;
+        background: rgba(255,61,113,0.2);
+        color: #ff3d71;
+        border: 1px solid rgba(255,61,113,0.4);
+        animation: pulse 1.2s infinite;
+        margin-left: 6px;
+    }
 </style>
 {% endblock %}
 
@@ -304,6 +364,45 @@
                 </div>
             </div>
 
+            <!-- ── Shift Cost Estimator (JS-populated) ───────────── -->
+            <div class="shift-panel mt-3" id="shift-panel-{{ sym }}">
+                <div class="section-title">
+                    <i class="bi bi-arrow-left-right me-1"></i>Shift Cost Estimator
+                    <span id="shift-trigger-badge-{{ sym }}" style="display:none;"
+                          class="shift-triggered-badge">SHIFT TRIGGERED</span>
+                </div>
+                <div class="row g-2">
+                    <!-- PUT side -->
+                    <div class="col-12 col-md-6">
+                        <div class="shift-side-card" id="shift-put-card-{{ sym }}">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-semibold" style="color:#ff6b6b;">
+                                    <i class="bi bi-arrow-down-circle me-1"></i>PUT Spread Shift
+                                </span>
+                                <span id="shift-put-status-{{ sym }}" class="text-muted small">—</span>
+                            </div>
+                            <div id="shift-put-rows-{{ sym }}">
+                                <div class="loading-placeholder"><span class="spinner-border spinner-sm me-1"></span>Loading…</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- CALL side -->
+                    <div class="col-12 col-md-6">
+                        <div class="shift-side-card" id="shift-call-card-{{ sym }}">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-semibold" style="color:#51cf66;">
+                                    <i class="bi bi-arrow-up-circle me-1"></i>CALL Spread Shift
+                                </span>
+                                <span id="shift-call-status-{{ sym }}" class="text-muted small">—</span>
+                            </div>
+                            <div id="shift-call-rows-{{ sym }}">
+                                <div class="loading-placeholder"><span class="spinner-border spinner-sm me-1"></span>Loading…</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div><!-- card-body -->
     </div><!-- card -->
     {% endfor %}
@@ -493,5 +592,118 @@ async function loadPositionDetails() {
 // Fetch on load, then every 30 seconds
 loadPositionDetails();
 setInterval(loadPositionDetails, 30000);
+
+// ── Shift Cost Estimator ───────────────────────────────────────────────────
+async function loadShiftCost() {
+    try {
+        const resp = await fetch('/api/shift_cost', {cache: 'no-store'});
+        const data = await resp.json();
+        if (data.error) { console.warn('shift_cost error:', data.error); return; }
+
+        for (const pos of (data.positions || [])) {
+            const s = pos.symbol;
+            if (pos.error) {
+                set(`shift-put-rows-${s}`, `<div class="text-muted small">${pos.error}</div>`);
+                set(`shift-call-rows-${s}`, `<div class="text-muted small">${pos.error}</div>`);
+                continue;
+            }
+
+            const triggered = pos.put_triggered || pos.call_triggered;
+            const badge = document.getElementById(`shift-trigger-badge-${s}`);
+            if (badge) badge.style.display = triggered ? 'inline-block' : 'none';
+
+            const putCard  = document.getElementById(`shift-put-card-${s}`);
+            const callCard = document.getElementById(`shift-call-card-${s}`);
+
+            // Card border: threatened side gets red, safe side gets green
+            if (putCard) {
+                putCard.className = `shift-side-card ${pos.threatened_side === 'PUT' ? 'threatened' : 'safe'}`;
+            }
+            if (callCard) {
+                callCard.className = `shift-side-card ${pos.threatened_side === 'CALL' ? 'threatened' : 'safe'}`;
+            }
+
+            // Status labels
+            set(`shift-put-status-${s}`,
+                pos.put_triggered
+                    ? `<span style="color:#ff3d71;font-weight:700;">⚡ TRIGGERED</span>`
+                    : pos.threatened_side === 'PUT'
+                        ? `<span style="color:#ffaa00;">⚠ Closer side</span>`
+                        : `<span style="color:#00d68f;">Safe</span>`);
+            set(`shift-call-status-${s}`,
+                pos.call_triggered
+                    ? `<span style="color:#ff3d71;font-weight:700;">⚡ TRIGGERED</span>`
+                    : pos.threatened_side === 'CALL'
+                        ? `<span style="color:#ffaa00;">⚠ Closer side</span>`
+                        : `<span style="color:#00d68f;">Safe</span>`);
+
+            // Build side HTML
+            function sideRows(side, trigLevel) {
+                if (!side) return '<div class="text-muted small">No data</div>';
+                const cd  = side.close_debit;
+                const nc  = side.new_credit;
+                const net = side.net_per_share;
+                const tot = side.net_total;
+                const netCls  = tot == null ? '' : (tot > 0 ? 'shift-net-debit' : 'shift-net-credit');
+                const netSign = tot == null ? '' : (tot > 0 ? '+' : '');
+                const netLabel = tot == null ? '—' : (tot > 0 ? 'Net DEBIT' : 'Net CREDIT');
+
+                return `
+                <div class="shift-row">
+                    <span class="lbl">Current short strike</span>
+                    <span class="val">₹${fmtN(side.current_short_strike, 0)}</span>
+                </div>
+                <div class="shift-row">
+                    <span class="lbl">Close short @ ask</span>
+                    <span class="val" style="color:#ff6b6b">₹${fmtN(side.current_short_ask, 2)}</span>
+                </div>
+                <div class="shift-row">
+                    <span class="lbl">Sell long @ bid</span>
+                    <span class="val" style="color:#51cf66">₹${fmtN(side.current_long_bid, 2)}</span>
+                </div>
+                <div class="shift-row">
+                    <span class="lbl">Close debit / share</span>
+                    <span class="val" style="color:#ffaa00">₹${fmtN(cd, 4)}</span>
+                </div>
+                <div class="shift-row" style="margin-top:4px">
+                    <span class="lbl">New short strike (target)</span>
+                    <span class="val">₹${fmtN(side.new_short_strike, 0)}</span>
+                </div>
+                <div class="shift-row">
+                    <span class="lbl">New long strike (target)</span>
+                    <span class="val">₹${fmtN(side.new_long_strike, 0)}</span>
+                </div>
+                <div class="shift-row">
+                    <span class="lbl">New short mid price</span>
+                    <span class="val" style="color:#51cf66">₹${fmtN(side.new_short_mid, 2)}</span>
+                </div>
+                <div class="shift-row">
+                    <span class="lbl">New long mid price</span>
+                    <span class="val" style="color:#ff6b6b">₹${fmtN(side.new_long_mid, 2)}</span>
+                </div>
+                <div class="shift-row">
+                    <span class="lbl">New entry credit / share</span>
+                    <span class="val" style="color:#00d68f">₹${fmtN(nc, 4)}</span>
+                </div>
+                <div class="shift-net-cost ${netCls}">
+                    ${netLabel}: ${netSign}₹${fmtN(tot, 0)}
+                    <span style="font-size:0.72rem;font-weight:400;color:#c0cce0;margin-left:6px;">
+                        (₹${fmtN(net, 4)}/share × ${fmtN(Math.round(Math.abs(tot || 0) / Math.abs(net || 1)), 0)} qty)
+                    </span>
+                </div>
+                ${trigLevel ? `<div style="font-size:0.7rem;color:#9aa0b0;margin-top:4px;">
+                    Trigger level: ₹${fmtN(trigLevel, 2)}</div>` : ''}`;
+            }
+
+            set(`shift-put-rows-${s}`,  sideRows(pos.put_side,  pos.put_trigger_level));
+            set(`shift-call-rows-${s}`, sideRows(pos.call_side, pos.call_trigger_level));
+        }
+    } catch(e) {
+        console.error('loadShiftCost failed:', e);
+    }
+}
+
+loadShiftCost();
+setInterval(loadShiftCost, 30000);
 </script>
 {% endblock %}

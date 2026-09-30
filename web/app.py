@@ -505,6 +505,248 @@ def create_app() -> Flask:
 
         return jsonify({"positions": results})
 
+    @app.route("/api/shift_cost")
+    def api_shift_cost():
+        """
+        Estimate the cost of shifting each open position, replicating the runner's
+        exact shift_condor() logic against current live quotes.
+
+        For each open position and each side (PUT / CALL):
+          close_debit     = short_ask − long_bid           (pay to close threatened spread)
+          new_credit      = mid(new_short) − mid(new_long) (receive from re-entry)
+          net_shift_cost  = (close_debit − new_credit) × qty  [positive = net outflow]
+
+        New target strikes mirror condor_runner exactly:
+          PUT  shift: new_short = spot × (1 − put_dist_pct/100)
+                      new_long  = new_short − spot × wing_width_pct/100
+          CALL shift: new_short = spot × (1 + call_dist_pct/100)
+                      new_long  = new_short + spot × wing_width_pct/100
+        Strikes are snapped to the nearest available on the exchange.
+        """
+        from datetime import date as _date
+        from decimal import Decimal as _Dec
+
+        positions = _load_positions_from_db()
+        open_pos = [p for p in positions if p.get("state") in ("OPEN", "SHIFTING")]
+        if not open_pos:
+            return jsonify({"positions": []})
+
+        try:
+            broker = _get_read_broker()
+        except Exception as exc:
+            return jsonify({"error": str(exc), "positions": []}), 200
+
+        # Strategy config
+        try:
+            cfg_raw = yaml.safe_load(_load_config_yaml()) or {}
+        except Exception:
+            cfg_raw = {}
+        strat = cfg_raw.get("strategy", {})
+        wing_width_pct   = float(strat.get("wing_width_pct",   2.0))
+        trigger_pct      = float(strat.get("shift_trigger_pct", 1.0))
+        stocks_map       = {s["symbol"]: s for s in cfg_raw.get("stocks", []) if isinstance(s, dict)}
+
+        # Load instrument master once (disk-cached — no extra API call)
+        inst_master: list[dict] = []
+        try:
+            if hasattr(broker, "_load_instruments"):
+                inst_master = broker._load_instruments()
+        except Exception:
+            pass
+
+        # ── helpers ──────────────────────────────────────────────────────────
+
+        def _get_strikes(symbol: str, expiry: _date):
+            puts: set[float] = set()
+            calls: set[float] = set()
+            for inst in inst_master:
+                if str(inst.get("name", "")).upper() != symbol.upper():
+                    continue
+                raw_exp = inst.get("expiry")
+                if hasattr(raw_exp, "date"):
+                    raw_exp = raw_exp.date()
+                elif isinstance(raw_exp, str):
+                    try:
+                        raw_exp = _date.fromisoformat(raw_exp)
+                    except ValueError:
+                        continue
+                if raw_exp != expiry:
+                    continue
+                try:
+                    strike = float(inst.get("strike", 0))
+                except (TypeError, ValueError):
+                    continue
+                itype = inst.get("instrument_type", "")
+                if itype == "PE":
+                    puts.add(strike)
+                elif itype == "CE":
+                    calls.add(strike)
+            return sorted(puts), sorted(calls)
+
+        def _snap(target: float, available: list[float]) -> float:
+            return min(available, key=lambda s: abs(s - target)) if available else target
+
+        def _mid(q) -> float:
+            from decimal import Decimal as D
+            mid = (q.bid + q.ask) / D("2")
+            return float((mid / D("0.05")).quantize(D("1")) * D("0.05"))
+
+        # ── per-position ──────────────────────────────────────────────────────
+
+        results = []
+        for pos in open_pos:
+            sym          = pos["symbol"]
+            qty          = int(pos.get("lots", 1) or 1) * int(pos.get("lot_size", 1) or 1)
+            expiry_str   = pos.get("expiry", "")
+            strikes      = pos.get("strikes", {}) or {}
+            stock_cfg    = stocks_map.get(sym, {})
+            put_dist     = float(stock_cfg.get("put_dist_pct",  5.0))
+            call_dist    = float(stock_cfg.get("call_dist_pct", 5.0))
+
+            # Current short strikes
+            sp = float(strikes.get("short_put")  or 0)
+            sc = float(strikes.get("short_call") or 0)
+
+            # Spot
+            spot: Optional[float] = None
+            try:
+                if hasattr(broker, "get_equity_spot"):
+                    spot = broker.get_equity_spot(sym)
+            except Exception:
+                pass
+            if not spot:
+                results.append({"symbol": sym, "error": "no_spot"})
+                continue
+
+            try:
+                exp = _date.fromisoformat(expiry_str)
+            except (ValueError, TypeError):
+                results.append({"symbol": sym, "error": "bad_expiry"})
+                continue
+
+            avail_puts, avail_calls = _get_strikes(sym, exp)
+            wing_width = spot * wing_width_pct / 100.0
+
+            # New target strikes
+            new_sp_tgt = spot * (1.0 - put_dist  / 100.0);  new_sp = _snap(new_sp_tgt, avail_puts)
+            new_lp_tgt = new_sp_tgt - wing_width;            new_lp = _snap(new_lp_tgt, avail_puts)
+            new_sc_tgt = spot * (1.0 + call_dist / 100.0);  new_sc = _snap(new_sc_tgt, avail_calls)
+            new_lc_tgt = new_sc_tgt + wing_width;            new_lc = _snap(new_lc_tgt, avail_calls)
+
+            # Resolve new instruments
+            instruments_to_quote: list[tuple[int, str]] = []
+            current_tokens: dict[str, int] = {}
+            for leg_key in ("short_put", "long_put", "short_call", "long_call"):
+                leg = pos.get(leg_key)
+                if isinstance(leg, dict) and leg.get("instrument_token"):
+                    tok = int(leg["instrument_token"])
+                    current_tokens[leg_key] = tok
+                    instruments_to_quote.append((tok, leg.get("trading_symbol", "")))
+
+            new_insts: dict[str, Any] = {}
+            for new_key, strike_val, opt_type in [
+                ("new_sp", new_sp, "PE"),
+                ("new_lp", new_lp, "PE"),
+                ("new_sc", new_sc, "CE"),
+                ("new_lc", new_lc, "CE"),
+            ]:
+                try:
+                    inst = broker.resolve_instrument(sym, "NFO", exp, _Dec(str(strike_val)), opt_type)
+                    new_insts[new_key] = inst
+                    instruments_to_quote.append((inst.instrument_token, inst.trading_symbol))
+                except Exception:
+                    pass
+
+            try:
+                all_q = broker.get_quotes(instruments_to_quote)
+            except Exception as exc:
+                results.append({"symbol": sym, "error": f"quote_failed: {exc}"})
+                continue
+
+            # Quotes for current legs
+            def cq(key):
+                return all_q.get(current_tokens.get(key))
+
+            q_sp = cq("short_put");  q_lp = cq("long_put")
+            q_sc = cq("short_call"); q_lc = cq("long_call")
+
+            # Quotes for new legs
+            def nq(key):
+                inst = new_insts.get(key)
+                return all_q.get(inst.instrument_token) if inst else None
+
+            q_nsp = nq("new_sp"); q_nlp = nq("new_lp")
+            q_nsc = nq("new_sc"); q_nlc = nq("new_lc")
+
+            # Spread close debits (what you pay to close the spread)
+            put_close  = round(float(q_sp.ask) - float(q_lp.bid), 4) if q_sp and q_lp else None
+            call_close = round(float(q_sc.ask) - float(q_lc.bid), 4) if q_sc and q_lc else None
+
+            # New spread credits (what you receive from the re-entry at mid)
+            put_new_cr  = round(_mid(q_nsp) - _mid(q_nlp), 4) if q_nsp and q_nlp else None
+            call_new_cr = round(_mid(q_nsc) - _mid(q_nlc), 4) if q_nsc and q_nlc else None
+
+            # Net shift cost per share and total
+            put_net  = round(put_close  - put_new_cr,  4) if (put_close  is not None and put_new_cr  is not None) else None
+            call_net = round(call_close - call_new_cr, 4) if (call_close is not None and call_new_cr is not None) else None
+            put_net_total  = round(put_net  * qty, 2) if put_net  is not None else None
+            call_net_total = round(call_net * qty, 2) if call_net is not None else None
+
+            # Trigger levels and status
+            put_trigger  = round(sp * (1.0 - trigger_pct / 100.0), 2) if sp else None
+            call_trigger = round(sc * (1.0 + trigger_pct / 100.0), 2) if sc else None
+            put_triggered  = bool(spot < put_trigger)  if (put_trigger  and sp) else False
+            call_triggered = bool(spot > call_trigger) if (call_trigger and sc) else False
+
+            dist_to_sp = round(spot - sp, 2) if sp else None
+            dist_to_sc = round(sc - spot, 2) if sc else None
+            if dist_to_sp is not None and dist_to_sc is not None:
+                threatened = "PUT" if dist_to_sp < dist_to_sc else "CALL"
+            else:
+                threatened = "PUT" if dist_to_sp is not None else "CALL"
+
+            results.append({
+                "symbol":         sym,
+                "current_spot":   spot,
+                "threatened_side": threatened,
+                "put_triggered":  put_triggered,
+                "call_triggered": call_triggered,
+                "put_trigger_level":  put_trigger,
+                "call_trigger_level": call_trigger,
+                "dist_to_short_put":  dist_to_sp,
+                "dist_to_short_call": dist_to_sc,
+                "put_side": {
+                    "current_short_strike": sp,
+                    "current_long_strike":  float(strikes.get("long_put") or 0),
+                    "current_short_ask":    float(q_sp.ask) if q_sp else None,
+                    "current_long_bid":     float(q_lp.bid) if q_lp else None,
+                    "close_debit":          put_close,
+                    "new_short_strike":     new_sp,
+                    "new_long_strike":      new_lp,
+                    "new_short_mid":        _mid(q_nsp) if q_nsp else None,
+                    "new_long_mid":         _mid(q_nlp) if q_nlp else None,
+                    "new_credit":           put_new_cr,
+                    "net_per_share":        put_net,
+                    "net_total":            put_net_total,
+                },
+                "call_side": {
+                    "current_short_strike": sc,
+                    "current_long_strike":  float(strikes.get("long_call") or 0),
+                    "current_short_ask":    float(q_sc.ask) if q_sc else None,
+                    "current_long_bid":     float(q_lc.bid) if q_lc else None,
+                    "close_debit":          call_close,
+                    "new_short_strike":     new_sc,
+                    "new_long_strike":      new_lc,
+                    "new_short_mid":        _mid(q_nsc) if q_nsc else None,
+                    "new_long_mid":         _mid(q_nlc) if q_nlc else None,
+                    "new_credit":           call_new_cr,
+                    "net_per_share":        call_net,
+                    "net_total":            call_net_total,
+                },
+            })
+
+        return jsonify({"positions": results})
+
     @app.route("/api/logs")
     def api_logs():
         """Return last N log events as JSON. Query params: n (default 100), symbol, event_type."""
