@@ -2,22 +2,90 @@
 
 {% block title %}Positions — CondorLive{% endblock %}
 
+{% block extra_head %}
+<style>
+    .metric-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: #9aa0b0;
+        margin-bottom: 2px;
+    }
+    .metric-value {
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: #e0e6f0;
+    }
+    .live-metrics-panel {
+        background: rgba(0, 149, 255, 0.04);
+        border: 1px solid rgba(0, 149, 255, 0.15);
+        border-radius: 8px;
+        padding: 0.85rem 1rem;
+        margin-bottom: 1rem;
+    }
+    .live-metrics-panel .section-title {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #0095ff;
+        font-weight: 600;
+        margin-bottom: 0.6rem;
+    }
+    .depth-panel {
+        background: rgba(0,0,0,0.3);
+        border-radius: 6px;
+        padding: 0.6rem 0.7rem;
+        font-size: 0.75rem;
+    }
+    .depth-panel .depth-header {
+        font-weight: 700;
+        margin-bottom: 0.35rem;
+        font-size: 0.78rem;
+    }
+    .depth-panel .depth-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.72rem;
+        line-height: 1.5;
+    }
+    .depth-panel .depth-col-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.65rem;
+        color: #9aa0b0;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        padding-bottom: 2px;
+        margin-bottom: 3px;
+    }
+    .dist-ok    { color: #00d68f; }
+    .dist-warn  { color: #ffaa00; }
+    .dist-alert { color: #ff3d71; font-weight: 700; }
+    .loading-placeholder { color: #666; font-size: 0.8rem; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0 fw-bold">
-        <i class="bi bi-layers me-2 text-info"></i>Open Positions — 4-Leg Detail
+        <i class="bi bi-layers me-2 text-info"></i>Open Positions — Detail View
     </h5>
-    <span class="text-muted small">{{ now }}</span>
+    <div class="d-flex align-items-center gap-3">
+        <span class="text-muted small"><i class="bi bi-clock me-1"></i>{{ now }}</span>
+        <span class="badge bg-secondary small" id="detail-refresh-badge">
+            <i class="bi bi-arrow-repeat me-1"></i>Live quotes
+        </span>
+    </div>
 </div>
 
 {% if positions %}
     {% for pos in positions %}
     {% set state = pos.get('state', 'OPEN') %}
+    {% set sym = pos.get('symbol', '') %}
     <div class="card mb-4">
         <!-- Position header -->
         <div class="card-header d-flex justify-content-between align-items-center py-3">
             <div class="d-flex align-items-center gap-3">
-                <span class="fs-5 fw-bold">{{ pos.get('symbol', '—') }}</span>
+                <span class="fs-5 fw-bold text-white">{{ sym or '—' }}</span>
                 {% if state == 'OPEN' %}
                 <span class="badge badge-open">OPEN</span>
                 {% elif state == 'SHIFTING' %}
@@ -32,7 +100,8 @@
                 {% endif %}
             </div>
             <div class="text-end">
-                <div class="{% if (pos.get('pnl') or 0) >= 0 %}pnl-positive{% else %}pnl-negative{% endif %} fs-5 fw-bold">
+                <div class="{% if (pos.get('pnl') or 0) >= 0 %}pnl-positive{% else %}pnl-negative{% endif %} fs-5 fw-bold"
+                     id="header-pnl-{{ sym }}">
                     {% set pnl = pos.get('pnl', pos.get('unrealised_pnl', 0)) or 0 %}
                     {% if pnl >= 0 %}+{% endif %}₹{{ "{:,.0f}".format(pnl) }}
                 </div>
@@ -41,36 +110,97 @@
         </div>
 
         <div class="card-body">
-            <!-- Key metrics row -->
-            <div class="row g-3 mb-4">
+            <!-- ── Entry metrics ─────────────────────────────────────── -->
+            <div class="row g-3 mb-3">
                 <div class="col-6 col-md-2">
-                    <div class="text-muted small">Spot @ Entry</div>
-                    <div class="fw-semibold">₹{{ "{:,.1f}".format(pos.get('spot_at_entry', 0) or 0) }}</div>
+                    <div class="metric-label">Spot @ Entry</div>
+                    <div class="metric-value">₹{{ "{:,.1f}".format(pos.get('spot_at_entry', 0) or 0) }}</div>
                 </div>
                 <div class="col-6 col-md-2">
-                    <div class="text-muted small">Expiry</div>
-                    <div class="fw-semibold">{{ pos.get('expiry', '—') }}</div>
+                    <div class="metric-label">Expiry</div>
+                    <div class="metric-value timestamp-cell" style="color:#c8d0e0;">{{ pos.get('expiry', '—') }}</div>
                 </div>
                 <div class="col-6 col-md-2">
-                    <div class="text-muted small">Lots</div>
-                    <div class="fw-semibold">{{ pos.get('lots', '—') }}</div>
+                    <div class="metric-label">Lots</div>
+                    <div class="metric-value">{{ pos.get('lots', '—') }}</div>
                 </div>
                 <div class="col-6 col-md-2">
-                    <div class="text-muted small">Initial Credit</div>
-                    <div class="fw-semibold pnl-positive">₹{{ "{:.4f}".format(pos.get('initial_credit', 0) or 0) }}/share</div>
+                    <div class="metric-label">Initial Credit</div>
+                    <div class="metric-value pnl-positive">₹{{ "{:.4f}".format(pos.get('initial_credit', 0) or 0) }}/share</div>
                 </div>
                 <div class="col-6 col-md-2">
-                    <div class="text-muted small">Entry Time</div>
-                    <div class="fw-semibold timestamp-cell">{{ (pos.get('entry_time', '') or '')[:16] or '—' }}</div>
+                    <div class="metric-label">Entry Time</div>
+                    <div class="metric-value timestamp-cell" style="color:#c8d0e0;">{{ (pos.get('entry_time', '') or '')[:16] or '—' }}</div>
                 </div>
                 <div class="col-6 col-md-2">
-                    <div class="text-muted small">Strategy Run ID</div>
-                    <div class="fw-semibold timestamp-cell small">{{ pos.get('strategy_run_id', pos.get('symbol', ''))[:20] }}</div>
+                    <div class="metric-label">Strategy Run ID</div>
+                    <div class="metric-value timestamp-cell small" style="color:#c8d0e0;">{{ pos.get('strategy_run_id', sym)[:20] }}</div>
                 </div>
             </div>
 
-            <!-- 4-leg table -->
-            <h6 class="text-muted text-uppercase small mb-2" style="letter-spacing: 0.8px;">
+            <!-- ── Live metrics panel (JS-populated) ─────────────────── -->
+            <div class="live-metrics-panel" id="live-panel-{{ sym }}">
+                <div class="section-title"><i class="bi bi-broadcast me-1"></i>Live Market Metrics</div>
+
+                <!-- Row 1: spot, distances, premium%, close cost, P&L -->
+                <div class="row g-3 mb-2">
+                    <div class="col-6 col-md-2">
+                        <div class="metric-label">Current Spot</div>
+                        <div id="spot-{{ sym }}"><span class="loading-placeholder">fetching…</span></div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="metric-label">Dist. to Short Put</div>
+                        <div id="dist-sp-{{ sym }}"><span class="loading-placeholder">—</span></div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="metric-label">Dist. to Short Call</div>
+                        <div id="dist-sc-{{ sym }}"><span class="loading-placeholder">—</span></div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="metric-label">Net Premium / Spread</div>
+                        <div id="prem-pct-{{ sym }}"><span class="loading-placeholder">—</span></div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="metric-label">Current Shift Cost</div>
+                        <div id="exit-cost-{{ sym }}"><span class="loading-placeholder">—</span></div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="metric-label">Live P&amp;L</div>
+                        <div id="live-pnl-{{ sym }}"><span class="loading-placeholder">—</span></div>
+                    </div>
+                </div>
+
+                <!-- Row 2: margins, ROI, spread width -->
+                <div class="row g-3">
+                    <div class="col-6 col-md-2">
+                        <div class="metric-label">Cash Margin (est.)</div>
+                        <div id="cash-margin-{{ sym }}"><span class="loading-placeholder">—</span></div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="metric-label">Stock Contract Val.</div>
+                        <div id="stock-margin-{{ sym }}"><span class="loading-placeholder">—</span></div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="metric-label">Total Margin</div>
+                        <div id="total-margin-{{ sym }}"><span class="loading-placeholder">—</span></div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="metric-label">ROI on Cash Margin</div>
+                        <div id="roi-cash-{{ sym }}"><span class="loading-placeholder">—</span></div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="metric-label">ROI on Contract Val.</div>
+                        <div id="roi-stock-{{ sym }}"><span class="loading-placeholder">—</span></div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="metric-label">Spread Width</div>
+                        <div id="spread-width-{{ sym }}"><span class="loading-placeholder">—</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── 4-leg breakdown table ───────────────────────────── -->
+            <h6 class="text-uppercase small mb-2" style="letter-spacing: 0.8px; color: #b0b8cc;">
                 <i class="bi bi-diagram-3 me-1"></i>Leg Breakdown
             </h6>
             <div class="table-responsive">
@@ -85,34 +215,43 @@
                             <th>Expiry</th>
                             <th>Lot Size</th>
                             <th>Entry Price</th>
-                            <th>Current Bid</th>
-                            <th>Current Ask</th>
+                            <th>Bid (Qty)</th>
+                            <th>Ask (Qty)</th>
                             <th>LTP</th>
                         </tr>
                     </thead>
                     <tbody>
+                        {# legs_info: (name, id, trading_sym, opt_type, side, strike, expiry, lot_sz) #}
                         {% set legs_info = [
-                            ('Long Put',    pos.get('long_put_symbol',    pos.get('long_put', {}).get('trading_symbol', '') if pos.get('long_put') else ''),
-                                           'PE', 'BUY',  pos.get('long_put_strike',   pos.get('strikes', {}).get('long_put', '—')),
-                                           pos.get('expiry', '—'),
-                                           pos.get('lot_size', pos.get('long_put', {}).get('lot_size', '—') if pos.get('long_put') else '—')),
-                            ('Short Put',   pos.get('short_put_symbol',   pos.get('short_put', {}).get('trading_symbol', '') if pos.get('short_put') else ''),
-                                           'PE', 'SELL', pos.get('short_put_strike',  pos.get('strikes', {}).get('short_put', '—')),
-                                           pos.get('expiry', '—'),
-                                           pos.get('lot_size', pos.get('short_put', {}).get('lot_size', '—') if pos.get('short_put') else '—')),
-                            ('Short Call',  pos.get('short_call_symbol',  pos.get('short_call', {}).get('trading_symbol', '') if pos.get('short_call') else ''),
-                                           'CE', 'SELL', pos.get('short_call_strike', pos.get('strikes', {}).get('short_call', '—')),
-                                           pos.get('expiry', '—'),
-                                           pos.get('lot_size', pos.get('short_call', {}).get('lot_size', '—') if pos.get('short_call') else '—')),
-                            ('Long Call',   pos.get('long_call_symbol',   pos.get('long_call', {}).get('trading_symbol', '') if pos.get('long_call') else ''),
-                                           'CE', 'BUY',  pos.get('long_call_strike',  pos.get('strikes', {}).get('long_call', '—')),
-                                           pos.get('expiry', '—'),
-                                           pos.get('lot_size', pos.get('long_call', {}).get('lot_size', '—') if pos.get('long_call') else '—')),
+                            ('Long Put',   'lp',
+                             pos.get('long_put',  {}).get('trading_symbol', '') if pos.get('long_put')  else '',
+                             'PE', 'BUY',
+                             pos.get('strikes', {}).get('long_put',  '—'),
+                             pos.get('expiry', '—'),
+                             pos.get('lot_size', pos.get('long_put',  {}).get('lot_size', '—') if pos.get('long_put')  else '—')),
+                            ('Short Put',  'sp',
+                             pos.get('short_put', {}).get('trading_symbol', '') if pos.get('short_put') else '',
+                             'PE', 'SELL',
+                             pos.get('strikes', {}).get('short_put', '—'),
+                             pos.get('expiry', '—'),
+                             pos.get('lot_size', pos.get('short_put', {}).get('lot_size', '—') if pos.get('short_put') else '—')),
+                            ('Short Call', 'sc',
+                             pos.get('short_call',{}).get('trading_symbol', '') if pos.get('short_call') else '',
+                             'CE', 'SELL',
+                             pos.get('strikes', {}).get('short_call','—'),
+                             pos.get('expiry', '—'),
+                             pos.get('lot_size', pos.get('short_call',{}).get('lot_size', '—') if pos.get('short_call') else '—')),
+                            ('Long Call',  'lc',
+                             pos.get('long_call', {}).get('trading_symbol', '') if pos.get('long_call')  else '',
+                             'CE', 'BUY',
+                             pos.get('strikes', {}).get('long_call', '—'),
+                             pos.get('expiry', '—'),
+                             pos.get('lot_size', pos.get('long_call', {}).get('lot_size', '—') if pos.get('long_call')  else '—')),
                         ] %}
-                        {% for leg_name, sym, otype, side, strike, expiry_leg, lot_sz in legs_info %}
+                        {% for leg_name, leg_id, leg_sym, otype, side, strike, expiry_leg, lot_sz in legs_info %}
                         <tr>
-                            <td class="fw-semibold">{{ leg_name }}</td>
-                            <td class="timestamp-cell">{{ sym or '—' }}</td>
+                            <td class="fw-semibold text-white">{{ leg_name }}</td>
+                            <td class="timestamp-cell">{{ leg_sym or '—' }}</td>
                             <td>
                                 <span class="badge {% if otype == 'PE' %}bg-danger{% else %}bg-success{% endif %} bg-opacity-25
                                       text-{% if otype == 'PE' %}danger{% else %}success{% endif %}">
@@ -124,36 +263,49 @@
                                     {{ side }}
                                 </span>
                             </td>
-                            <td class="fw-semibold">{{ strike }}</td>
+                            <td class="fw-semibold text-white">{{ strike }}</td>
                             <td class="timestamp-cell">{{ expiry_leg }}</td>
-                            <td>{{ lot_sz }}</td>
+                            <td class="text-white">{{ lot_sz }}</td>
                             <td class="text-muted">—</td>
-                            <td class="text-muted">—</td>
-                            <td class="text-muted">—</td>
-                            <td class="text-muted">—</td>
+                            <td id="bid-{{ sym }}-{{ leg_id }}" class="text-muted">—</td>
+                            <td id="ask-{{ sym }}-{{ leg_id }}" class="text-muted">—</td>
+                            <td id="ltp-{{ sym }}-{{ leg_id }}" class="text-muted">—</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
 
-            <!-- Condor diagram -->
-            <div class="mt-3 p-3 rounded" style="background: rgba(0,0,0,0.2); font-family: monospace; font-size: 0.8rem;">
+            <!-- ── Condor diagram ─────────────────────────────────── -->
+            <div class="mt-3 p-3 rounded" style="background: rgba(0,0,0,0.2); font-family: monospace; font-size: 0.85rem;">
                 {% set strikes = pos.get('strikes', {}) %}
                 {% if strikes %}
                 <span class="text-info">LP: {{ strikes.get('long_put', '—') }}</span>
                 <span class="text-muted mx-2">◄──</span>
-                <span class="text-danger fw-bold">SP: {{ strikes.get('short_put', '—') }}</span>
-                <span class="text-muted mx-2">═══ CONDOR ═══</span>
-                <span class="text-success fw-bold">SC: {{ strikes.get('short_call', '—') }}</span>
+                <span style="color:#ff6b6b; font-weight:700;">SP: {{ strikes.get('short_put', '—') }}</span>
+                <span class="text-muted mx-2"> ═══ CONDOR ═══ </span>
+                <span style="color:#51cf66; font-weight:700;">SC: {{ strikes.get('short_call', '—') }}</span>
                 <span class="text-muted mx-2">──►</span>
                 <span class="text-info">LC: {{ strikes.get('long_call', '—') }}</span>
                 {% else %}
                 <span class="text-muted">Strike data not available</span>
                 {% endif %}
             </div>
-        </div>
-    </div>
+
+            <!-- ── Order book depth (JS-populated) ───────────────── -->
+            <div class="mt-3">
+                <h6 class="text-uppercase small mb-2" style="letter-spacing: 0.8px; color: #b0b8cc;">
+                    <i class="bi bi-list-ol me-1"></i>Order Book Depth
+                </h6>
+                <div class="row g-2" id="depth-{{ sym }}">
+                    <div class="col text-muted small loading-placeholder">
+                        <span class="spinner-border spinner-sm me-1"></span>Loading depth…
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- card-body -->
+    </div><!-- card -->
     {% endfor %}
 
 {% else %}
@@ -165,5 +317,181 @@
     </div>
 </div>
 {% endif %}
+{% endblock %}
 
+{% block extra_js %}
+<script>
+// ── Helpers ────────────────────────────────────────────────────────────────
+const fmtN  = (n, dec=0) => n != null
+    ? n.toLocaleString('en-IN', {maximumFractionDigits: dec, minimumFractionDigits: dec})
+    : '—';
+const fmtINR = (n, dec=0) => n != null ? `₹${fmtN(n, dec)}` : '—';
+const fmtPct = (n, dec=2) => n != null ? `${n.toFixed(dec)}%` : '—';
+const pnlCls = (n) => n == null ? '' : (n >= 0 ? 'pnl-positive' : 'pnl-negative');
+const pnlSign = (n) => n == null ? '' : (n >= 0 ? '+' : '');
+const distCls = (pct) => pct == null ? '' : (pct < 3 ? 'dist-alert' : (pct < 5 ? 'dist-warn' : 'dist-ok'));
+const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+// ── Leg ordering for depth display ────────────────────────────────────────
+const LEG_ORDER = [
+    {key: 'long_put',   label: 'Long Put',   color: '#0095ff'},
+    {key: 'short_put',  label: 'Short Put',  color: '#ff6b6b'},
+    {key: 'short_call', label: 'Short Call', color: '#51cf66'},
+    {key: 'long_call',  label: 'Long Call',  color: '#0095ff'},
+];
+const LEG_ID_MAP = {long_put: 'lp', short_put: 'sp', short_call: 'sc', long_call: 'lc'};
+
+// ── Main fetch & render ────────────────────────────────────────────────────
+async function loadPositionDetails() {
+    const badge = document.getElementById('detail-refresh-badge');
+    if (badge) badge.innerHTML = '<span class="spinner-border spinner-sm me-1"></span>Fetching…';
+
+    try {
+        const resp = await fetch('/api/position_details', {cache: 'no-store'});
+        const data = await resp.json();
+
+        if (data.error) {
+            if (badge) badge.innerHTML = '<i class="bi bi-exclamation-triangle me-1 text-warning"></i>Quote error';
+            console.warn('Position details error:', data.error);
+            return;
+        }
+
+        for (const pos of (data.positions || [])) {
+            const s = pos.symbol;
+
+            // ── Current spot ─────────────────────────────────────────────
+            set(`spot-${s}`, pos.current_spot != null
+                ? `<span class="metric-value text-white">₹${fmtN(pos.current_spot, 2)}</span>`
+                : '<span class="text-muted">unavailable</span>');
+
+            // ── Distances to short strikes ────────────────────────────────
+            const dspCls = distCls(pos.dist_from_short_put_pct);
+            set(`dist-sp-${s}`, pos.dist_from_short_put != null
+                ? `<span class="${dspCls} fw-semibold">₹${fmtN(pos.dist_from_short_put, 0)}
+                   <small>(${fmtPct(pos.dist_from_short_put_pct)})</small></span>`
+                : '<span class="text-muted">—</span>');
+
+            const dscCls = distCls(pos.dist_from_short_call_pct);
+            set(`dist-sc-${s}`, pos.dist_from_short_call != null
+                ? `<span class="${dscCls} fw-semibold">₹${fmtN(pos.dist_from_short_call, 0)}
+                   <small>(${fmtPct(pos.dist_from_short_call_pct)})</small></span>`
+                : '<span class="text-muted">—</span>');
+
+            // ── Net premium % of spread ───────────────────────────────────
+            set(`prem-pct-${s}`, pos.net_premium_pct_of_spread != null
+                ? `<span class="text-info fw-semibold">${fmtPct(pos.net_premium_pct_of_spread)}</span>`
+                : '<span class="text-muted">—</span>');
+
+            // ── Current shift/exit cost ───────────────────────────────────
+            if (pos.exit_cost_total != null) {
+                const exitCls = pos.unrealised_pnl != null
+                    ? (pos.unrealised_pnl >= 0 ? 'pnl-positive' : 'pnl-negative')
+                    : 'text-white';
+                set(`exit-cost-${s}`,
+                    `<span class="${exitCls} fw-semibold">${fmtINR(pos.exit_cost_total, 0)}</span>
+                     <small class="text-muted d-block">₹${fmtN(pos.close_cost_per_share, 4)}/share</small>`);
+            } else {
+                set(`exit-cost-${s}`, '<span class="text-muted">—</span>');
+            }
+
+            // ── Live P&L ─────────────────────────────────────────────────
+            if (pos.unrealised_pnl != null) {
+                const cls = pnlCls(pos.unrealised_pnl);
+                const sign = pnlSign(pos.unrealised_pnl);
+                const html = `<span class="${cls} fw-bold">${sign}${fmtINR(pos.unrealised_pnl, 0)}</span>`;
+                set(`live-pnl-${s}`, html);
+                set(`header-pnl-${s}`, html);
+            }
+
+            // ── Margins ───────────────────────────────────────────────────
+            set(`cash-margin-${s}`, pos.cash_margin != null
+                ? `<span class="text-white">${fmtINR(pos.cash_margin, 0)}</span>`
+                : '<span class="text-muted">—</span>');
+            set(`stock-margin-${s}`, pos.stock_margin != null
+                ? `<span class="text-white">${fmtINR(pos.stock_margin, 0)}</span>`
+                : '<span class="text-muted">—</span>');
+            set(`total-margin-${s}`, pos.total_margin != null
+                ? `<span class="text-white fw-semibold">${fmtINR(pos.total_margin, 0)}</span>`
+                : '<span class="text-muted">—</span>');
+
+            // ── ROI ───────────────────────────────────────────────────────
+            set(`roi-cash-${s}`, pos.roi_cash_pct != null
+                ? `<span class="text-info fw-semibold">${fmtPct(pos.roi_cash_pct)}</span>`
+                : '<span class="text-muted">—</span>');
+            set(`roi-stock-${s}`, pos.roi_stock_pct != null
+                ? `<span class="text-info fw-semibold">${fmtPct(pos.roi_stock_pct)}</span>`
+                : '<span class="text-muted">—</span>');
+
+            // ── Spread width ──────────────────────────────────────────────
+            set(`spread-width-${s}`, pos.spread_width
+                ? `<span class="text-white">₹${fmtN(pos.spread_width, 0)}</span>`
+                : '<span class="text-muted">—</span>');
+
+            // ── Per-leg bid/ask/LTP in table ──────────────────────────────
+            for (const [legKey, legId] of Object.entries(LEG_ID_MAP)) {
+                const lq = pos.leg_quotes?.[legKey];
+                if (!lq) continue;
+                set(`bid-${s}-${legId}`,
+                    `<span class="text-success">₹${fmtN(lq.bid, 2)}</span>
+                     <span class="text-muted small"> (${fmtN(lq.bid_qty)})</span>`);
+                set(`ask-${s}-${legId}`,
+                    `<span class="text-danger">₹${fmtN(lq.ask, 2)}</span>
+                     <span class="text-muted small"> (${fmtN(lq.ask_qty)})</span>`);
+                set(`ltp-${s}-${legId}`,
+                    `<span class="text-white">₹${fmtN(lq.ltp, 2)}</span>`);
+            }
+
+            // ── Order book depth ──────────────────────────────────────────
+            const depthEl = document.getElementById(`depth-${s}`);
+            if (!depthEl) continue;
+
+            let depthHtml = '';
+            for (const {key, label, color} of LEG_ORDER) {
+                const lq = pos.leg_quotes?.[key];
+                if (!lq) continue;
+
+                const bids = lq.depth_bids || [];
+                const asks = lq.depth_asks || [];
+                const levels = Math.max(bids.length, asks.length, 1);
+
+                let rowsHtml = '';
+                for (let i = 0; i < Math.min(levels, 5); i++) {
+                    const b = bids[i];
+                    const a = asks[i];
+                    rowsHtml += `<div class="depth-row">
+                        <span style="color:#51cf66">${b ? `${fmtN(b.price, 2)} <span style="color:#9aa0b0">(${fmtN(b.qty)})</span>` : '—'}</span>
+                        <span style="color:#ff6b6b">${a ? `${fmtN(a.price, 2)} <span style="color:#9aa0b0">(${fmtN(a.qty)})</span>` : '—'}</span>
+                    </div>`;
+                }
+
+                depthHtml += `<div class="col-6 col-lg-3">
+                    <div class="depth-panel">
+                        <div class="depth-header" style="color:${color}">${label}</div>
+                        <div class="depth-col-header"><span>Bid (Qty)</span><span>Ask (Qty)</span></div>
+                        ${rowsHtml || '<div class="text-muted" style="font-size:0.7rem">No depth data</div>'}
+                        <div class="depth-row mt-1 pt-1" style="border-top:1px solid rgba(255,255,255,0.08);">
+                            <span style="color:#9aa0b0;font-size:0.65rem">OI: ${fmtN(lq.oi)}</span>
+                            <span style="color:#9aa0b0;font-size:0.65rem">LTP: ₹${fmtN(lq.ltp, 2)}</span>
+                        </div>
+                    </div>
+                </div>`;
+            }
+
+            depthEl.innerHTML = depthHtml
+                || '<div class="col text-muted small">No quote data available for depth display.</div>';
+        }
+
+        const now = new Date().toLocaleTimeString('en-IN', {timeZone: 'Asia/Kolkata', hour12: false});
+        if (badge) badge.innerHTML = `<i class="bi bi-check2 me-1 text-success"></i>Updated ${now}`;
+
+    } catch(e) {
+        console.error('Failed to load position details:', e);
+        if (badge) badge.innerHTML = '<i class="bi bi-exclamation-triangle me-1 text-danger"></i>Fetch failed';
+    }
+}
+
+// Fetch on load, then every 30 seconds
+loadPositionDetails();
+setInterval(loadPositionDetails, 30000);
+</script>
 {% endblock %}

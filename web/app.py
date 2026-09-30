@@ -336,6 +336,175 @@ def create_app() -> Flask:
             "total_unrealised_pnl": round(total_pnl, 2),
         })
 
+    @app.route("/api/position_details")
+    def api_position_details():
+        """
+        Enhanced position data with live quotes, margins, and derived metrics.
+
+        Returns per-position:
+          - Current spot price
+          - Per-leg bid/ask/LTP and order book depth (top 5 levels)
+          - Distance from current spot to each short strike (₹ and %)
+          - Net premium as % of spread width
+          - Estimated cash margin (max-loss proxy) and contract value
+          - ROI on cash margin and on contract value
+          - Current cost to exit / shift (close_cost × qty)
+          - Unrealised P&L
+        """
+        positions = _load_positions_from_db()
+        open_pos = [p for p in positions if p.get("state") in ("OPEN", "SHIFTING")]
+        if not open_pos:
+            return jsonify({"positions": []})
+
+        try:
+            broker = _get_read_broker()
+        except Exception as exc:
+            return jsonify({"error": str(exc), "positions": []}), 200
+
+        # Collect all option instruments to quote
+        instruments: list[tuple[int, str]] = []
+        pos_leg_tokens: dict[str, dict[str, int]] = {}
+
+        for pos in open_pos:
+            sym = pos["symbol"]
+            leg_tokens: dict[str, int] = {}
+            for leg_key in ("short_put", "long_put", "short_call", "long_call"):
+                leg = pos.get(leg_key)
+                if isinstance(leg, dict):
+                    token = leg.get("instrument_token")
+                    tsym = leg.get("trading_symbol", "")
+                    if token:
+                        token = int(token)
+                        instruments.append((token, tsym))
+                        leg_tokens[leg_key] = token
+            pos_leg_tokens[sym] = leg_tokens
+
+        try:
+            quotes = broker.get_quotes(instruments)
+        except Exception as exc:
+            return jsonify({"error": f"Quote fetch failed: {exc}", "positions": []}), 200
+
+        results = []
+        for pos in open_pos:
+            sym = pos["symbol"]
+            entry_credit = float(pos.get("initial_credit", 0) or 0)
+            lots = int(pos.get("lots", 1) or 1)
+            lot_size = int(pos.get("lot_size", 1) or 1)
+            qty = lots * lot_size
+            leg_tokens = pos_leg_tokens.get(sym, {})
+            strikes = pos.get("strikes", {}) or {}
+
+            # Build per-leg quote data including depth
+            leg_quotes: dict[str, dict] = {}
+            for leg_key, token in leg_tokens.items():
+                q = quotes.get(token)
+                if q:
+                    leg_quotes[leg_key] = {
+                        "ltp": float(q.ltp),
+                        "bid": float(q.bid),
+                        "ask": float(q.ask),
+                        "bid_qty": int(q.bid_qty),
+                        "ask_qty": int(q.ask_qty),
+                        "oi": int(q.oi),
+                        "depth_bids": [
+                            {"price": float(d.price), "qty": d.quantity, "orders": d.orders}
+                            for d in (q.depth_bids or [])[:5]
+                        ],
+                        "depth_asks": [
+                            {"price": float(d.price), "qty": d.quantity, "orders": d.orders}
+                            for d in (q.depth_asks or [])[:5]
+                        ],
+                    }
+
+            # Close cost: cost to exit all legs at current market prices
+            close_cost = 0.0
+            close_complete = True
+            for leg_key in ("short_put", "short_call", "long_put", "long_call"):
+                lq = leg_quotes.get(leg_key)
+                if not lq:
+                    close_complete = False
+                    break
+                if "short" in leg_key:
+                    close_cost += lq["ask"]   # buy back short at ask
+                else:
+                    close_cost -= lq["bid"]   # sell long at bid (receive)
+
+            unrealised_pnl = round((entry_credit - close_cost) * qty, 2) if close_complete else None
+
+            # Current spot price
+            current_spot: Optional[float] = None
+            try:
+                if hasattr(broker, "get_equity_spot"):
+                    current_spot = broker.get_equity_spot(sym)
+            except Exception:
+                pass
+
+            # Strike arithmetic
+            sp = float(strikes.get("short_put") or 0)
+            sc = float(strikes.get("short_call") or 0)
+            lp = float(strikes.get("long_put") or 0)
+            lc = float(strikes.get("long_call") or 0)
+
+            put_width = round(sp - lp, 2) if (sp and lp) else 0.0
+            call_width = round(lc - sc, 2) if (lc and sc) else 0.0
+            # Use the narrower wing as the representative spread width
+            spread_width = (
+                min(put_width, call_width) if (put_width and call_width)
+                else max(put_width, call_width)
+            )
+
+            # Net premium as % of spread width
+            net_premium_pct = round(entry_credit / spread_width * 100, 2) if spread_width > 0 else None
+
+            # Distance from current spot to each short strike
+            dist_sp: Optional[float] = None
+            dist_sc: Optional[float] = None
+            dist_sp_pct: Optional[float] = None
+            dist_sc_pct: Optional[float] = None
+            if current_spot:
+                if sp:
+                    dist_sp = round(abs(current_spot - sp), 2)
+                    dist_sp_pct = round(dist_sp / current_spot * 100, 2)
+                if sc:
+                    dist_sc = round(abs(current_spot - sc), 2)
+                    dist_sc_pct = round(dist_sc / current_spot * 100, 2)
+
+            # Margin estimates
+            # Cash margin ≈ max loss = (spread_width − net_credit_per_share) × qty
+            max_loss_per_share = max(spread_width - entry_credit, 0.0)
+            cash_margin = round(max_loss_per_share * qty, 2)
+            # Stock/contract value = spot × qty (notional value of underlying)
+            stock_margin = round(float(current_spot or 0) * qty, 2)
+
+            net_credit_total = round(entry_credit * qty, 2)
+            roi_cash = round(net_credit_total / cash_margin * 100, 2) if cash_margin > 0 else None
+            roi_stock = round(net_credit_total / stock_margin * 100, 2) if stock_margin > 0 else None
+
+            results.append({
+                "symbol": sym,
+                "current_spot": current_spot,
+                "unrealised_pnl": unrealised_pnl,
+                "close_cost_per_share": round(close_cost, 4) if close_complete else None,
+                "exit_cost_total": round(close_cost * qty, 2) if close_complete else None,
+                "leg_quotes": leg_quotes,
+                "dist_from_short_put": dist_sp,
+                "dist_from_short_call": dist_sc,
+                "dist_from_short_put_pct": dist_sp_pct,
+                "dist_from_short_call_pct": dist_sc_pct,
+                "spread_width": spread_width,
+                "net_premium_pct_of_spread": net_premium_pct,
+                "cash_margin": cash_margin,
+                "stock_margin": stock_margin,
+                "total_margin": round(cash_margin + stock_margin, 2),
+                "roi_cash_pct": roi_cash,
+                "roi_stock_pct": roi_stock,
+                "net_credit_total": net_credit_total,
+                "qty": qty,
+                "entry_credit": entry_credit,
+            })
+
+        return jsonify({"positions": results})
+
     @app.route("/api/logs")
     def api_logs():
         """Return last N log events as JSON. Query params: n (default 100), symbol, event_type."""
