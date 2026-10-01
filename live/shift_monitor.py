@@ -147,29 +147,42 @@ class ShiftMonitor:
             if not current_positions:
                 logger.debug("shift_monitor_no_positions")
             else:
+                # Pre-fetch all equity spots in ONE batch API call to avoid
+                # Zerodha's 3 req/second rate limit when monitoring multiple positions.
+                spot_cache: Dict[str, Optional[float]] = {}
+                if hasattr(self._broker, "get_equity_spots_batch"):
+                    underlyings = list({
+                        getattr(p, "underlying", "") for p in current_positions
+                        if getattr(p, "underlying", "")
+                    })
+                    if underlyings:
+                        spot_cache = self._broker.get_equity_spots_batch(underlyings)  # type: ignore[attr-defined]
+
                 for pos in current_positions:
                     # Kill switch re-check between positions
                     if self._kill_switch.is_active():
                         logger.critical("kill_switch_activated_mid_loop")
                         self._stop_event.set()
                         break
-                    self._process_position(pos)
+                    self._process_position(pos, spot_cache=spot_cache)
 
             # ── Wait for next poll ──────────────────────────────────────────
             self._stop_event.wait(timeout=_POLL_INTERVAL_SECONDS)
 
         logger.info("shift_monitor_loop_ended")
 
-    def _process_position(self, pos: Any) -> None:
+    def _process_position(self, pos: Any, spot_cache: Optional[Dict[str, Optional[float]]] = None) -> None:
         """
         Evaluate a single position for shift or take-profit conditions.
 
         Args:
-            pos: CondorPosition dataclass instance.
+            pos:        CondorPosition dataclass instance.
+            spot_cache: Pre-fetched spot prices keyed by underlying.upper().
+                        If provided, skips per-symbol API call.
         """
         symbol = getattr(pos, "symbol", "UNKNOWN")
         try:
-            should_act, reason = self._check_position(pos)
+            should_act, reason = self._check_position(pos, spot_cache=spot_cache)
             if not should_act:
                 logger.debug("position_ok", extra={"symbol": symbol})
                 return
@@ -192,7 +205,7 @@ class ShiftMonitor:
             )
             self._trade_logger.log_error(symbol, exc, {"phase": "shift_monitor"})
 
-    def _check_position(self, pos: Any) -> Tuple[bool, str]:
+    def _check_position(self, pos: Any, spot_cache: Optional[Dict[str, Optional[float]]] = None) -> Tuple[bool, str]:
         """
         Evaluate a single CondorPosition for shift triggers.
 
@@ -201,7 +214,8 @@ class ShiftMonitor:
           SHIFT_CALL:  spot > short_call_strike × (1 + shift_trigger_pct/100)
 
         Args:
-            pos: CondorPosition dataclass.
+            pos:        CondorPosition dataclass.
+            spot_cache: Optional pre-fetched spot prices from get_equity_spots_batch().
 
         Returns:
             Tuple (should_act: bool, reason: str). reason is empty string
@@ -209,8 +223,13 @@ class ShiftMonitor:
         """
         symbol: str = getattr(pos, "symbol", "UNKNOWN")
 
-        # ── Fetch live spot price ──────────────────────────────────────────
-        spot = self._get_current_spot(pos, {})
+        # ── Fetch live spot price (use cache if available) ─────────────────
+        spot: Optional[float] = None
+        if spot_cache is not None:
+            underlying = getattr(pos, "underlying", "")
+            spot = spot_cache.get(underlying.upper())
+        if spot is None or spot <= 0:
+            spot = self._get_current_spot(pos, {})
         if spot is None or spot <= 0:
             logger.warning("shift_monitor_no_spot", extra={"symbol": symbol})
             return False, ""

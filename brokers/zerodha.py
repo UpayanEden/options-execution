@@ -14,7 +14,7 @@ import time
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 try:
@@ -640,16 +640,42 @@ class ZerodhaBroker(BrokerAdapter):
         """
         Fetch the current LTP of an NSE equity (e.g. 'RELIANCE') using the
         NSE: exchange prefix.  Returns None on any error.
+
+        Prefer get_equity_spots_batch() when fetching multiple symbols to
+        avoid hitting Zerodha's 3 req/second REST rate limit.
         """
+        result = self.get_equity_spots_batch([symbol])
+        return result.get(symbol.upper())
+
+    def get_equity_spots_batch(self, symbols: List[str]) -> Dict[str, Optional[float]]:
+        """
+        Fetch current LTPs for multiple NSE equities in a single kite.quote()
+        call.  This avoids rate limiting when monitoring several positions.
+
+        Args:
+            symbols: List of NSE equity ticker symbols (e.g. ['AMBUJACEM', 'AXISBANK']).
+
+        Returns:
+            Dict mapping symbol.upper() → last_price (float) or None on error.
+        """
+        if not symbols:
+            return {}
+        keys = [f"NSE:{s.upper()}" for s in symbols]
         try:
-            key = f"NSE:{symbol.upper()}"
-            raw = self._kite.quote([key])
-            data = raw.get(key, {})
-            ltp = data.get("last_price", 0)
-            return float(ltp) if ltp else None
+            raw = self._kite.quote(keys)
+            result: Dict[str, Optional[float]] = {}
+            for s in symbols:
+                key = f"NSE:{s.upper()}"
+                data = raw.get(key, {})
+                ltp = data.get("last_price", 0)
+                result[s.upper()] = float(ltp) if ltp else None
+            return result
         except Exception as exc:
-            logger.warning("equity_spot_failed", extra={"symbol": symbol, "error": str(exc)})
-            return None
+            logger.warning(
+                "equity_spot_failed",
+                extra={"symbols": symbols, "error": str(exc)},
+            )
+            return {s.upper(): None for s in symbols}
 
     def get_historical_data(
         self,
