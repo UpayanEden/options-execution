@@ -239,11 +239,14 @@ class ShiftMonitor:
         short_put_strike = float(pos.short_put.strike)
         short_call_strike = float(pos.short_call.strike)
 
-        put_breach_level = short_put_strike * (1.0 - shift_trigger_pct / 100.0)
-        call_breach_level = short_call_strike * (1.0 + shift_trigger_pct / 100.0)
+        # Trigger when spot comes WITHIN shift_trigger_pct% of the short strike
+        # (still OTM but approaching) — i.e. spot < short_put × (1 + pct%)
+        # rather than waiting until spot has already gone past the strike.
+        put_breach_level  = short_put_strike  * (1.0 + shift_trigger_pct / 100.0)
+        call_breach_level = short_call_strike * (1.0 - shift_trigger_pct / 100.0)
 
         if spot < put_breach_level:
-            pct_through = (short_put_strike - spot) / short_put_strike * 100.0
+            pct_away = (spot - short_put_strike) / short_put_strike * 100.0
             self._trade_logger.log(
                 EventType.SHIFT_TRIGGERED,
                 symbol,
@@ -252,14 +255,14 @@ class ShiftMonitor:
                     "spot": round(spot, 2),
                     "short_put_strike": short_put_strike,
                     "breach_level": round(put_breach_level, 2),
-                    "pct_through": round(pct_through, 2),
+                    "pct_away_from_strike": round(pct_away, 2),
                 },
                 level="WARNING",
             )
             return True, f"SHIFT_PUT: spot={spot:.2f} < breach={put_breach_level:.2f}"
 
         if spot > call_breach_level:
-            pct_through = (spot - short_call_strike) / short_call_strike * 100.0
+            pct_away = (short_call_strike - spot) / short_call_strike * 100.0
             self._trade_logger.log(
                 EventType.SHIFT_TRIGGERED,
                 symbol,
@@ -268,7 +271,7 @@ class ShiftMonitor:
                     "spot": round(spot, 2),
                     "short_call_strike": short_call_strike,
                     "breach_level": round(call_breach_level, 2),
-                    "pct_through": round(pct_through, 2),
+                    "pct_away_from_strike": round(pct_away, 2),
                 },
                 level="WARNING",
             )

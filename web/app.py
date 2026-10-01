@@ -694,9 +694,9 @@ def create_app() -> Flask:
             put_net_total  = round(put_net  * qty, 2) if put_net  is not None else None
             call_net_total = round(call_net * qty, 2) if call_net is not None else None
 
-            # Trigger levels and status
-            put_trigger  = round(sp * (1.0 - trigger_pct / 100.0), 2) if sp else None
-            call_trigger = round(sc * (1.0 + trigger_pct / 100.0), 2) if sc else None
+            # Trigger levels: fire when spot comes within trigger_pct% of the short strike
+            put_trigger  = round(sp * (1.0 + trigger_pct / 100.0), 2) if sp else None
+            call_trigger = round(sc * (1.0 - trigger_pct / 100.0), 2) if sc else None
             put_triggered  = bool(spot < put_trigger)  if (put_trigger  and sp) else False
             call_triggered = bool(spot > call_trigger) if (call_trigger and sc) else False
 
