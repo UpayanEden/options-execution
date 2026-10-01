@@ -143,10 +143,17 @@
                         <th>State</th>
                         <th>Expiry</th>
                         <th>Spot @ Entry</th>
+                        <th>Spot Live</th>
                         <th>Short Put</th>
                         <th>Short Call</th>
                         <th>Lots</th>
-                        <th>Credit</th>
+                        <th>Entry Credit</th>
+                        <th>Net Premium ₹</th>
+                        <th>Premium %</th>
+                        <th>Current Premium</th>
+                        <th>Max P/L</th>
+                        <th>R/R Strategy</th>
+                        <th>R/R Wait</th>
                         <th>P&amp;L</th>
                         <th>Shift Cost</th>
                         <th>Shifts</th>
@@ -155,8 +162,10 @@
                 </thead>
                 <tbody>
                     {% for pos in positions %}
+                    {% set sym = pos.get('symbol', '') %}
+                    {% set m = pos_metrics.get(sym, {}) %}
                     <tr>
-                        <td class="ps-3 fw-semibold">{{ pos.get('symbol', '—') }}</td>
+                        <td class="ps-3 fw-semibold">{{ sym or '—' }}</td>
                         <td>
                             {% set state = pos.get('state', 'OPEN') %}
                             {% if state == 'OPEN' %}
@@ -169,6 +178,7 @@
                         </td>
                         <td class="timestamp-cell">{{ pos.get('expiry', '—') }}</td>
                         <td>{{ "₹{:,.1f}".format(pos.get('spot_at_entry', 0) or 0) }}</td>
+                        <td id="spot-live-{{ sym }}"><span class="text-muted small">—</span></td>
                         <td>
                             {% set strikes = pos.get('strikes', {}) %}
                             {% if strikes %}
@@ -186,10 +196,42 @@
                         </td>
                         <td>{{ pos.get('lots', '—') }}</td>
                         <td class="pnl-positive">{{ "₹{:.2f}".format(pos.get('initial_credit', 0) or 0) }}</td>
-                        <td id="pnl-{{ pos.get('symbol', '') }}" data-symbol="{{ pos.get('symbol', '') }}">
+                        <td class="pnl-positive">
+                            {% if m.net_premium_total is defined and m.net_premium_total is not none %}
+                            ₹{{ "{:,.0f}".format(m.net_premium_total) }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>
+                            {% if m.net_premium_pct is defined and m.net_premium_pct is not none %}
+                            <span class="{% if m.net_premium_pct >= 4 %}pnl-positive{% elif m.net_premium_pct >= 2 %}text-warning{% else %}text-light{% endif %}">
+                                {{ m.net_premium_pct }}%
+                            </span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td id="curr-prem-{{ sym }}"><span class="text-muted small">—</span></td>
+                        <td>
+                            {% if m.max_profit is defined and m.max_loss is defined %}
+                            <span class="pnl-positive small">+₹{{ "{:,.0f}".format(m.max_profit) }}</span>
+                            <span class="text-muted small"> / </span>
+                            <span class="pnl-negative small">-₹{{ "{:,.0f}".format(m.max_loss) }}</span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>
+                            {% if m.rr_strategy is defined and m.rr_strategy is not none %}
+                            <span class="text-light">{{ m.rr_strategy }}x</span>
+                            <div style="font-size:0.68rem;color:#9aa8bc;">risk per ₹ profit</div>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>
+                            {% if m.rr_wait is defined and m.rr_wait is not none %}
+                            <span class="text-info">{{ m.rr_wait }}x</span>
+                            <div style="font-size:0.68rem;color:#9aa8bc;">if wait {{ (m.premium_pct_target * 100)|int }}% decay</div>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td id="pnl-{{ sym }}" data-symbol="{{ sym }}">
                             <span class="text-muted small">—</span>
                         </td>
-                        <td id="shift-cost-{{ pos.get('symbol', '') }}">
+                        <td id="shift-cost-{{ sym }}">
                             <span class="text-muted small">—</span>
                         </td>
                         <td>{{ pos.get('shift_count', 0) }}</td>
@@ -310,18 +352,28 @@ async function refreshLivePnl() {
             label.textContent = `Updated ${t}`;
         }
 
-        // Update per-row P&L
+        // Update per-row P&L and current premium
         (data.positions || []).forEach(p => {
             const cell = document.getElementById(`pnl-${p.symbol}`);
-            if (!cell) return;
-            if (p.unrealised_pnl == null) {
-                cell.innerHTML = '<span class="text-muted small">—</span>';
-                return;
+            if (cell) {
+                if (p.unrealised_pnl == null) {
+                    cell.innerHTML = '<span class="text-muted small">—</span>';
+                } else {
+                    const cls = p.unrealised_pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+                    const sign = p.unrealised_pnl >= 0 ? '+' : '';
+                    cell.className = cls;
+                    cell.textContent = `${sign}₹${p.unrealised_pnl.toLocaleString('en-IN', {maximumFractionDigits: 0})}`;
+                }
             }
-            const cls = p.unrealised_pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
-            const sign = p.unrealised_pnl >= 0 ? '+' : '';
-            cell.className = cls;
-            cell.textContent = `${sign}₹${p.unrealised_pnl.toLocaleString('en-IN', {maximumFractionDigits: 0})}`;
+            // Current premium = live close cost per share
+            const premCell = document.getElementById(`curr-prem-${p.symbol}`);
+            if (premCell) {
+                if (p.close_cost == null) {
+                    premCell.innerHTML = '<span class="text-muted small">—</span>';
+                } else {
+                    premCell.innerHTML = `<span class="text-warning">₹${p.close_cost.toFixed(2)}</span>`;
+                }
+            }
         });
     } catch(e) {
         const card = document.getElementById('total-pnl-value');
@@ -339,6 +391,12 @@ async function refreshShiftCost() {
         const resp = await fetch('/api/shift_cost', {cache: 'no-store'});
         const data = await resp.json();
         for (const pos of (data.positions || [])) {
+            // Live spot price
+            const spotCell = document.getElementById(`spot-live-${pos.symbol}`);
+            if (spotCell && pos.current_spot != null) {
+                spotCell.innerHTML = `<span class="text-light fw-semibold">₹${pos.current_spot.toLocaleString('en-IN', {maximumFractionDigits: 1})}</span>`;
+            }
+
             const cell = document.getElementById(`shift-cost-${pos.symbol}`);
             if (!cell) continue;
 

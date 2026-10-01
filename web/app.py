@@ -91,9 +91,11 @@ def create_app() -> Flask:
         cfg_raw = yaml.safe_load(_load_config_yaml()) or {}
         capital_info = cfg_raw.get("capital", {})
         strategy_info = cfg_raw.get("strategy", {})
+        pos_metrics = _compute_position_metrics(positions, cfg_raw)
         return render_template(
             "dashboard.html",
             positions=positions,
+            pos_metrics=pos_metrics,
             total_pnl=pnl_summary.get("total_pnl", 0.0),
             open_count=sum(1 for p in positions if p.get("state") == "OPEN"),
             win_rate=win_rate,
@@ -447,11 +449,8 @@ def create_app() -> Flask:
 
             put_width = round(sp - lp, 2) if (sp and lp) else 0.0
             call_width = round(lc - sc, 2) if (lc and sc) else 0.0
-            # Use the narrower wing as the representative spread width
-            spread_width = (
-                min(put_width, call_width) if (put_width and call_width)
-                else max(put_width, call_width)
-            )
+            # Use the wider wing as the representative spread width
+            spread_width = max(put_width, call_width)
 
             # Net premium as % of spread width
             net_premium_pct = round(entry_credit / spread_width * 100, 2) if spread_width > 0 else None
@@ -908,6 +907,87 @@ def _db_connect() -> Optional[sqlite3.Connection]:
 
 
 _JSON_COLUMNS = {"strikes", "short_put", "long_put", "short_call", "long_call", "broker_order_ids"}
+
+
+def _compute_position_metrics(
+    positions: List[Dict[str, Any]],
+    cfg_raw: Optional[Dict] = None,
+) -> Dict[str, Dict]:
+    """
+    Compute static (non-live) per-position metrics for the dashboard table.
+
+    Returns a dict keyed by symbol with keys:
+      put_width, call_width, spread_width, net_premium_total, max_profit,
+      max_loss, cash_margin, net_premium_pct, rr_strategy, rr_wait,
+      profit_if_wait, premium_pct_target, qty
+    """
+    if cfg_raw is None:
+        try:
+            cfg_raw = yaml.safe_load(_load_config_yaml()) or {}
+        except Exception:
+            cfg_raw = {}
+    stocks_map = {
+        s["symbol"]: s
+        for s in cfg_raw.get("stocks", [])
+        if isinstance(s, dict) and "symbol" in s
+    }
+    metrics: Dict[str, Dict] = {}
+    for pos in positions:
+        sym = pos.get("symbol", "")
+        strikes = pos.get("strikes", {}) or {}
+        lots = int(pos.get("lots", 1) or 1)
+        lot_size = int(pos.get("lot_size", 1) or 1)
+        qty = lots * lot_size
+        initial_credit = float(pos.get("initial_credit", 0) or 0)
+
+        sp = float(strikes.get("short_put") or 0)
+        lp = float(strikes.get("long_put") or 0)
+        sc = float(strikes.get("short_call") or 0)
+        lc = float(strikes.get("long_call") or 0)
+
+        put_width = round(sp - lp, 2) if (sp and lp) else 0.0
+        call_width = round(lc - sc, 2) if (lc and sc) else 0.0
+        spread_width = max(put_width, call_width)  # use wider wing
+
+        stock_cfg = stocks_map.get(sym, {})
+        premium_pct_target = float(stock_cfg.get("premium_pct", 0.4))
+
+        net_premium_total = round(initial_credit * qty, 2)
+        max_profit = net_premium_total
+        max_loss_ps = max(spread_width - initial_credit, 0.0)
+        max_loss = round(max_loss_ps * qty, 2)
+        cash_margin = max_loss
+
+        net_premium_pct = (
+            round(initial_credit / spread_width * 100, 2) if spread_width > 0 else None
+        )
+        # R/R: how many ₹ at risk for every ₹ of max profit
+        rr_strategy = (
+            round(max_loss_ps / initial_credit, 2) if initial_credit > 0 else None
+        )
+        profit_if_wait = round(
+            initial_credit * (1.0 - premium_pct_target) * qty, 2
+        )
+        rr_wait = (
+            round(max_loss / profit_if_wait, 2) if profit_if_wait > 0 else None
+        )
+
+        metrics[sym] = {
+            "put_width": put_width,
+            "call_width": call_width,
+            "spread_width": spread_width,
+            "net_premium_total": net_premium_total,
+            "max_profit": max_profit,
+            "max_loss": max_loss,
+            "cash_margin": cash_margin,
+            "net_premium_pct": net_premium_pct,
+            "rr_strategy": rr_strategy,
+            "rr_wait": rr_wait,
+            "profit_if_wait": profit_if_wait,
+            "premium_pct_target": premium_pct_target,
+            "qty": qty,
+        }
+    return metrics
 
 
 def _load_positions_from_db() -> List[Dict[str, Any]]:
