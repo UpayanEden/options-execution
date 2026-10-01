@@ -185,8 +185,8 @@
                     <div class="metric-value">{{ pos.get('lots', '—') }}</div>
                 </div>
                 <div class="col-6 col-md-2">
-                    <div class="metric-label">Initial Credit</div>
-                    <div class="metric-value pnl-positive">₹{{ "{:.4f}".format(pos.get('initial_credit', 0) or 0) }}/share</div>
+                    <div class="metric-label">Initial Credit / share</div>
+                    <div class="metric-value pnl-positive">₹{{ "{:.4f}".format(pos.get('initial_credit', 0) or 0) }}</div>
                 </div>
                 <div class="col-6 col-md-2">
                     <div class="metric-label">Entry Time</div>
@@ -195,6 +195,63 @@
                 <div class="col-6 col-md-2">
                     <div class="metric-label">Strategy Run ID</div>
                     <div class="metric-value timestamp-cell small" style="color:#c8d0e0;">{{ pos.get('strategy_run_id', sym)[:20] }}</div>
+                </div>
+            </div>
+
+            <!-- ── Static strategy metrics ───────────────────────────── -->
+            {% set m = pos_metrics.get(sym, {}) %}
+            <div class="row g-3 mb-3 pb-3" style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+                <div class="col-6 col-md-2">
+                    <div class="metric-label">Net Premium ₹ (total)</div>
+                    <div class="metric-value pnl-positive">
+                        {% if m.net_premium_total is defined and m.net_premium_total is not none %}
+                        ₹{{ "{:,.0f}".format(m.net_premium_total) }}
+                        {% else %}—{% endif %}
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="metric-label">Premium % of Spread</div>
+                    <div class="metric-value">
+                        {% if m.net_premium_pct is defined and m.net_premium_pct is not none %}
+                        <span class="{% if m.net_premium_pct >= 4 %}pnl-positive{% elif m.net_premium_pct >= 2 %}text-warning{% else %}text-light{% endif %}">
+                            {{ m.net_premium_pct }}%
+                        </span>
+                        <div style="font-size:0.65rem;color:#9aa8bc;">spread = ₹{{ m.spread_width }}</div>
+                        {% else %}—{% endif %}
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="metric-label">Max Profit</div>
+                    <div class="metric-value pnl-positive">
+                        {% if m.max_profit is defined %}₹{{ "{:,.0f}".format(m.max_profit) }}{% else %}—{% endif %}
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="metric-label">Max Loss (Cash Margin)</div>
+                    <div class="metric-value pnl-negative">
+                        {% if m.max_loss is defined %}₹{{ "{:,.0f}".format(m.max_loss) }}{% else %}—{% endif %}
+                        {% if m.spread_width and m.spread_width > 0 %}
+                        <div style="font-size:0.65rem;color:#9aa8bc;">(spread − credit) × qty</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="metric-label">R/R (Strategy)</div>
+                    <div class="metric-value">
+                        {% if m.rr_strategy is defined and m.rr_strategy is not none %}
+                        <span class="text-light">{{ m.rr_strategy }}x</span>
+                        <div style="font-size:0.65rem;color:#9aa8bc;">risk per ₹ of profit</div>
+                        {% else %}—{% endif %}
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="metric-label">R/R (Wait {{ (m.premium_pct_target * 100)|int if m.premium_pct_target else 40 }}% decay)</div>
+                    <div class="metric-value">
+                        {% if m.rr_wait is defined and m.rr_wait is not none %}
+                        <span class="text-info">{{ m.rr_wait }}x</span>
+                        <div style="font-size:0.65rem;color:#9aa8bc;">target profit ₹{{ "{:,.0f}".format(m.profit_if_wait) if m.profit_if_wait else '—' }}</div>
+                        {% else %}—{% endif %}
+                    </div>
                 </div>
             </div>
 

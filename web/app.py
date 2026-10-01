@@ -111,9 +111,12 @@ def create_app() -> Flask:
     def positions_view():
         """Render the detailed positions page with 4-leg breakdown."""
         positions = _load_positions_from_db()
+        cfg_raw = yaml.safe_load(_load_config_yaml()) or {}
+        pos_metrics = _compute_position_metrics(positions, cfg_raw)
         return render_template(
             "positions.html",
             positions=positions,
+            pos_metrics=pos_metrics,
             kill_switch_active=_KILL_SWITCH_FLAG.exists(),
             now=datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
         )
