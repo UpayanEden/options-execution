@@ -66,6 +66,9 @@ class StockConfig:
     enabled: bool = True
     """Whether this stock is actively traded."""
 
+    expiry_type: str = "monthly"
+    """Expiry cycle to target: 'monthly' (last Thursday of month) or 'weekly' (any Thursday)."""
+
 
 @dataclass
 class StrategyParams:
@@ -164,6 +167,13 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
     stocks_raw: list[dict] = raw.get("stocks", [])
     stocks: list[StockConfig] = []
     for s in stocks_raw:
+        expiry_type = str(s.get("expiry_type", "monthly")).lower()
+        if expiry_type not in ("monthly", "weekly"):
+            logger.warning(
+                "invalid_expiry_type",
+                extra={"symbol": s.get("symbol"), "expiry_type": expiry_type},
+            )
+            expiry_type = "monthly"
         stocks.append(
             StockConfig(
                 symbol=str(s["symbol"]),
@@ -172,6 +182,7 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
                 premium_pct=float(s.get("premium_pct", 0.4)),
                 lots=int(s.get("lots", 0)),
                 enabled=bool(s.get("enabled", True)),
+                expiry_type=expiry_type,
             )
         )
 

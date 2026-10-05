@@ -316,6 +316,7 @@ class CondorRunner:
             symbol,
             self._config.strategy.min_dte,
             self._config.strategy.max_dte,
+            expiry_type=stock.expiry_type,
         )
         if expiry is None:
             logger.warning("no_suitable_expiry", extra={"symbol": symbol})
@@ -1120,19 +1121,32 @@ class CondorRunner:
 
     # ── Strike/Expiry helpers ──────────────────────────────────────────────
 
+    @staticmethod
+    def _is_monthly_expiry(exp: date) -> bool:
+        """
+        Return True if *exp* is a monthly expiry (last Thursday of its month).
+
+        On NSE, the monthly expiry is the last Thursday of the month.  A Thursday
+        is the last of the month when the next Thursday falls in the following month.
+        """
+        from datetime import timedelta
+        return (exp + timedelta(7)).month != exp.month
+
     def _find_expiry(
-        self, symbol: str, min_dte: int, max_dte: int
+        self, symbol: str, min_dte: int, max_dte: int, expiry_type: str = "monthly"
     ) -> Optional[date]:
         """
         Find the nearest suitable expiry within the DTE window.
 
-        Looks at all available NFO instruments for the symbol and finds
-        the nearest monthly expiry where min_dte <= DTE <= max_dte.
+        Looks at all available NFO instruments for the symbol, applies the
+        expiry_type filter, then returns the nearest qualifying expiry.
 
         Args:
-            symbol:  NSE symbol.
-            min_dte: Minimum days to expiry.
-            max_dte: Maximum days to expiry.
+            symbol:      NSE symbol.
+            min_dte:     Minimum days to expiry.
+            max_dte:     Maximum days to expiry.
+            expiry_type: ``'monthly'`` — last Thursday of the month only.
+                         ``'weekly'``  — any available expiry (includes weeklies).
 
         Returns:
             The best matching expiry date, or None.
@@ -1158,12 +1172,13 @@ class CondorRunner:
                 expiries.add(raw_exp)
 
         candidates = sorted(
-            [
-                exp
-                for exp in expiries
-                if min_dte <= (exp - today).days <= max_dte
-            ]
+            exp for exp in expiries
+            if min_dte <= (exp - today).days <= max_dte
         )
+
+        if expiry_type == "monthly":
+            candidates = [exp for exp in candidates if self._is_monthly_expiry(exp)]
+
         if not candidates:
             return None
         return candidates[0]

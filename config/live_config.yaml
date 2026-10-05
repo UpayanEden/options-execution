@@ -35,6 +35,8 @@ zerodha:
 # call_dist_pct: Short call distance from spot as % of spot price
 # premium_pct:   Take-profit: close when remaining cost <= (1 - premium_pct) × initial_credit
 # enabled:       Set to false to exclude stock from session entries
+# expiry_type:   'monthly' = last Thursday of month (default for all stocks)
+#                'weekly'  = nearest Thursday in DTE window (for indices like NIFTY)
 
 stocks:
   - symbol: AMBUJACEM
@@ -252,3 +254,12 @@ stocks:
     call_dist_pct: 4.0
     premium_pct: 0.4
     enabled: true
+
+  # ── Index options (weekly expiry) ──────────────────────────────────────────
+  - symbol: NIFTY
+    put_dist_pct: 2.0
+    call_dist_pct: 2.0
+    premium_pct: 0.4
+    lots: 1
+    expiry_type: weekly
+    enabled: false             # Enable when ready to trade
