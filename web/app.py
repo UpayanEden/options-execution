@@ -70,14 +70,15 @@ def create_app() -> Flask:
 
     @app.context_processor
     def inject_runner_status():
-        """Inject runner_running and trading_mode into every template automatically."""
+        """Inject runner_running, trading_mode, and alert_count into every template automatically."""
         running, _ = _runner_is_alive()
         try:
             cfg_raw = yaml.safe_load(_load_config_yaml()) or {}
             trading_mode = str(cfg_raw.get("mode", "paper")).lower()
         except Exception:
             trading_mode = "paper"
-        return {"runner_running": running, "trading_mode": trading_mode}
+        alert_count = _count_active_alerts()
+        return {"runner_running": running, "trading_mode": trading_mode, "alert_count": alert_count}
 
     # ── Register routes ────────────────────────────────────────────────────
 
@@ -148,6 +149,18 @@ def create_app() -> Flask:
             all_symbols=all_symbols,
             all_event_types=all_event_types,
             kill_switch_active=_KILL_SWITCH_FLAG.exists(),
+        )
+
+    @app.route("/alerts")
+    def alerts_view():
+        """Render the alerts page with shift failures and critical events."""
+        alerts_data = _load_alerts()
+        return render_template(
+            "alerts.html",
+            alerts=alerts_data["alerts"],
+            counts=alerts_data["counts"],
+            kill_switch_active=_KILL_SWITCH_FLAG.exists(),
+            now=datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
         )
 
     @app.route("/token")
@@ -749,6 +762,13 @@ def create_app() -> Flask:
 
         return jsonify({"positions": results})
 
+    @app.route("/api/alerts")
+    def api_alerts():
+        """Return alerts JSON. Query param: count_only=true returns just the badge count."""
+        if request.args.get("count_only") == "true":
+            return jsonify({"count": _count_active_alerts()})
+        return jsonify(_load_alerts())
+
     @app.route("/api/logs")
     def api_logs():
         """Return last N log events as JSON. Query params: n (default 100), symbol, event_type."""
@@ -1188,6 +1208,78 @@ def _load_log_events(
                 return events
 
     return events
+
+
+_ALERT_EVENT_TYPES = {
+    "SHIFT_FAILED",
+    "ORDER_REJECTED",
+    "POSITION_MISMATCH",
+    "KILL_SWITCH_ACTIVATED",
+    "CAPITAL_LIMIT_BREACHED",
+    "DAILY_LOSS_LIMIT_BREACHED",
+    "ENTRY_FAILED",
+    "EXIT_FAILED",
+    "ERROR",
+}
+
+_ALERT_DESCRIPTIONS = {
+    "SHIFT_FAILED":              "Shift execution failed mid-way",
+    "ORDER_REJECTED":            "Broker rejected an order",
+    "POSITION_MISMATCH":         "Live position doesn't match expected state",
+    "KILL_SWITCH_ACTIVATED":     "Kill switch was activated",
+    "CAPITAL_LIMIT_BREACHED":    "Capital limit breached",
+    "DAILY_LOSS_LIMIT_BREACHED": "Daily loss limit breached",
+    "ENTRY_FAILED":              "Strategy entry failed",
+    "EXIT_FAILED":               "Exit order failed",
+    "ERROR":                     "Unhandled system error",
+}
+
+
+def _load_alerts(limit: int = 200) -> Dict[str, Any]:
+    """
+    Load actionable alert events from log files.
+
+    Returns a dict with:
+      - alerts: list of event dicts (newest first, up to limit)
+      - counts: dict mapping category → count
+    """
+    raw = _load_log_events(limit=2000)
+    alerts: List[Dict[str, Any]] = []
+    counts: Dict[str, int] = {k: 0 for k in _ALERT_EVENT_TYPES}
+    counts["OTHER_ERROR"] = 0
+
+    for ev in raw:
+        etype = ev.get("event_type", "")
+        level = ev.get("level", "")
+        is_alert_type = etype in _ALERT_EVENT_TYPES
+        is_error_level = level in ("ERROR", "CRITICAL") and not is_alert_type
+
+        if is_alert_type:
+            ev = dict(ev)
+            ev.setdefault("alert_description", _ALERT_DESCRIPTIONS.get(etype, etype))
+            alerts.append(ev)
+            counts[etype] = counts.get(etype, 0) + 1
+            if len(alerts) >= limit:
+                break
+        elif is_error_level:
+            ev = dict(ev)
+            ev.setdefault("alert_description", "Unexpected error in system")
+            alerts.append(ev)
+            counts["OTHER_ERROR"] += 1
+            if len(alerts) >= limit:
+                break
+
+    counts["total"] = len(alerts)
+    return {"alerts": alerts, "counts": counts}
+
+
+def _count_active_alerts() -> int:
+    """Return the count of alert-worthy events for the nav badge."""
+    try:
+        data = _load_alerts(limit=500)
+        return data["counts"].get("total", 0)
+    except Exception:
+        return 0
 
 
 def _get_log_symbols() -> List[str]:

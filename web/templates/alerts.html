@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}Alerts — CondorLive{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0 fw-bold">
+        <i class="bi bi-bell-fill me-2 text-danger"></i>Alerts
+    </h5>
+    <span class="text-muted small" id="alert-refresh-ts">{{ now }}</span>
+</div>
+
+<!-- ── Summary cards ──────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-2">
+        <div class="card text-center h-100 {% if counts.total > 0 %}border-danger{% endif %}">
+            <div class="card-body py-3">
+                <div class="fs-3 fw-bold {% if counts.total > 0 %}text-danger{% else %}text-muted{% endif %}">
+                    {{ counts.total }}
+                </div>
+                <div class="text-muted small">Total Alerts</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card text-center h-100 {% if counts.SHIFT_FAILED > 0 %}border-warning{% endif %}">
+            <div class="card-body py-3">
+                <div class="fs-3 fw-bold {% if counts.SHIFT_FAILED > 0 %}text-warning{% else %}text-muted{% endif %}">
+                    {{ counts.SHIFT_FAILED }}
+                </div>
+                <div class="text-muted small">Shift Failures</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card text-center h-100 {% if counts.ORDER_REJECTED > 0 %}border-warning{% endif %}">
+            <div class="card-body py-3">
+                <div class="fs-3 fw-bold {% if counts.ORDER_REJECTED > 0 %}text-warning{% else %}text-muted{% endif %}">
+                    {{ counts.ORDER_REJECTED }}
+                </div>
+                <div class="text-muted small">Rejected Orders</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card text-center h-100 {% if counts.POSITION_MISMATCH > 0 %}border-danger{% endif %}">
+            <div class="card-body py-3">
+                <div class="fs-3 fw-bold {% if counts.POSITION_MISMATCH > 0 %}text-danger{% else %}text-muted{% endif %}">
+                    {{ counts.POSITION_MISMATCH }}
+                </div>
+                <div class="text-muted small">Pos. Mismatches</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card text-center h-100 {% if (counts.CAPITAL_LIMIT_BREACHED + counts.DAILY_LOSS_LIMIT_BREACHED) > 0 %}border-danger{% endif %}">
+            <div class="card-body py-3">
+                <div class="fs-3 fw-bold {% if (counts.CAPITAL_LIMIT_BREACHED + counts.DAILY_LOSS_LIMIT_BREACHED) > 0 %}text-danger{% else %}text-muted{% endif %}">
+                    {{ counts.CAPITAL_LIMIT_BREACHED + counts.DAILY_LOSS_LIMIT_BREACHED }}
+                </div>
+                <div class="text-muted small">Risk Breaches</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card text-center h-100 {% if (counts.ENTRY_FAILED + counts.EXIT_FAILED + counts.OTHER_ERROR) > 0 %}border-warning{% endif %}">
+            <div class="card-body py-3">
+                <div class="fs-3 fw-bold {% if (counts.ENTRY_FAILED + counts.EXIT_FAILED + counts.OTHER_ERROR) > 0 %}text-warning{% else %}text-muted{% endif %}">
+                    {{ counts.ENTRY_FAILED + counts.EXIT_FAILED + counts.OTHER_ERROR }}
+                </div>
+                <div class="text-muted small">Other Errors</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Alert list ─────────────────────────────────────────────────────── -->
+{% if alerts %}
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 small" id="alerts-table">
+                <thead>
+                    <tr>
+                        <th class="ps-3" style="width:115px">Time</th>
+                        <th style="width:85px">Severity</th>
+                        <th style="width:200px">Event</th>
+                        <th style="width:130px">Symbol</th>
+                        <th>Description / Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ev in alerts %}
+                    {% set level = ev.get('level', 'ERROR') %}
+                    {% set etype = ev.get('event_type', '') %}
+                    {% set detail_id = 'alert-detail-' + loop.index|string %}
+                    <tr class="cursor-pointer" onclick="toggleAlertDetail('{{ detail_id }}')" style="cursor:pointer;">
+                        <td class="ps-3 text-muted">
+                            {{ (ev.get('ts', '') or '')[:19] | replace('T', ' ') }}
+                        </td>
+                        <td>
+                            {% if level == 'CRITICAL' %}
+                            <span class="badge" style="background:#cc00cc">CRITICAL</span>
+                            {% elif level == 'ERROR' %}
+                            <span class="badge bg-danger">ERROR</span>
+                            {% elif level == 'WARNING' %}
+                            <span class="badge bg-warning text-dark">WARNING</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ level }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if etype == 'SHIFT_FAILED' %}
+                            <span class="text-warning fw-semibold">
+                                <i class="bi bi-arrow-left-right me-1"></i>{{ etype }}
+                            </span>
+                            {% elif 'BREACH' in etype or 'MISMATCH' in etype or 'KILL' in etype %}
+                            <span class="text-danger fw-semibold">
+                                <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ etype }}
+                            </span>
+                            {% elif 'REJECTED' in etype or 'FAILED' in etype %}
+                            <span class="text-danger fw-semibold">
+                                <i class="bi bi-x-circle me-1"></i>{{ etype }}
+                            </span>
+                            {% else %}
+                            <span class="text-warning">{{ etype }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="fw-semibold">{{ ev.get('symbol', '—') }}</td>
+                        <td class="text-muted" style="max-width:520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            {# Show alert description + key fields inline #}
+                            {% set desc = ev.get('alert_description', '') %}
+                            {% if desc %}<span class="text-light me-2">{{ desc }}</span>{% endif %}
+                            {% if etype == 'SHIFT_FAILED' %}
+                                {% set side = ev.get('trigger_side', '') %}
+                                {% set step = ev.get('failed_step', '') %}
+                                {% if side %}<span class="badge bg-secondary me-1">{{ side }}</span>{% endif %}
+                                {% if step %}<span class="text-muted">step: {{ step }}</span>{% endif %}
+                            {% elif etype == 'ORDER_REJECTED' %}
+                                {% set err = ev.get('error', '') %}
+                                {% if err %}<span class="text-danger">{{ err | truncate(80) }}</span>{% endif %}
+                            {% elif etype == 'POSITION_MISMATCH' %}
+                                expected={{ ev.get('expected', {}) }} actual={{ ev.get('actual', {}) }}
+                            {% else %}
+                                {% set skip = ['ts', 'level', 'logger', 'event_type', 'symbol', 'alert_description'] %}
+                                {% set parts = [] %}
+                                {% for k, v in ev.items() %}
+                                    {% if k not in skip %}
+                                        {% if parts.append(k + '=' + v|string|truncate(40, True)) %}{% endif %}
+                                    {% endif %}
+                                {% endfor %}
+                                {{ parts[:3]|join(' | ') }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <!-- Expandable JSON detail row -->
+                    <tr id="{{ detail_id }}" style="display:none;">
+                        <td colspan="5" class="p-0">
+                            <pre class="json-raw m-2">{{ ev | tojson(indent=2) }}</pre>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="card">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-check-circle display-4 d-block mb-3 text-success opacity-50"></i>
+        <h5 class="text-success">No Active Alerts</h5>
+        <p class="mb-0">All systems operating normally.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleAlertDetail(id) {
+    const row = document.getElementById(id);
+    if (row) {
+        row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+    }
+}
+
+// Auto-refresh every 30s
+(function scheduleRefresh() {
+    let secs = 30;
+    const el = document.getElementById('alert-refresh-ts');
+    const orig = el ? el.textContent : '';
+    setInterval(() => {
+        secs--;
+        if (secs <= 0) {
+            location.reload();
+        } else if (el) {
+            el.textContent = orig + ' (refresh in ' + secs + 's)';
+        }
+    }, 1000);
+})();
+</script>
+{% endblock %}

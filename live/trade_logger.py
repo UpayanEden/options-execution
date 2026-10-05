@@ -64,6 +64,7 @@ class EventType(str, Enum):
     EXIT_FAILED = "EXIT_FAILED"
     SHIFT_TRIGGERED = "SHIFT_TRIGGERED"
     SHIFT_COMPLETE = "SHIFT_COMPLETE"
+    SHIFT_FAILED = "SHIFT_FAILED"
     TAKE_PROFIT_HIT = "TAKE_PROFIT_HIT"
     GUARD_PASS = "GUARD_PASS"
     GUARD_FAIL = "GUARD_FAIL"
@@ -334,6 +335,28 @@ class TradeLogger:
                 "trigger_pct": trigger_pct,
             },
             level="WARNING",
+        )
+
+    def log_shift_failed(
+        self,
+        symbol: str,
+        trigger_side: str,
+        failed_step: str,
+    ) -> None:
+        """
+        Log a shift execution failure.
+
+        Args:
+            symbol:       Underlying symbol.
+            trigger_side: "PUT" or "CALL" — which side triggered the shift.
+            failed_step:  Short description of the step that failed
+                          (e.g. "buy_new_hedge", "buy_back_short", "resolve_instruments").
+        """
+        self.log(
+            EventType.SHIFT_FAILED,
+            symbol,
+            {"trigger_side": trigger_side, "failed_step": failed_step},
+            level="ERROR",
         )
 
     def log_take_profit(

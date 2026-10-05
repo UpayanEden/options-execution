@@ -762,6 +762,7 @@ class CondorRunner:
                 break
         if stock_cfg is None:
             logger.error("shift_no_stock_config", extra={"symbol": symbol})
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "no_stock_config")
             pos.state = "OPEN"
             return
 
@@ -778,6 +779,7 @@ class CondorRunner:
         spot = self._get_spot(symbol)
         if spot is None or spot <= 0:
             logger.error("shift_no_spot_for_reentry", extra={"symbol": symbol})
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "no_spot")
             pos.state = "OPEN"
             return
 
@@ -785,6 +787,7 @@ class CondorRunner:
         available_puts, available_calls = self._get_available_strikes(symbol, pos.expiry)
         if not available_puts or not available_calls:
             logger.error("shift_no_strikes", extra={"symbol": symbol})
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "no_strikes")
             pos.state = "OPEN"
             return
 
@@ -802,6 +805,7 @@ class CondorRunner:
                 )
             except InstrumentNotFoundError as exc:
                 logger.error("shift_instrument_not_found", extra={"symbol": symbol, "error": str(exc)})
+                self._trade_logger.log_shift_failed(symbol, trigger_side, "resolve_instruments")
                 pos.state = "OPEN"
                 return
         else:
@@ -818,6 +822,7 @@ class CondorRunner:
                 )
             except InstrumentNotFoundError as exc:
                 logger.error("shift_instrument_not_found", extra={"symbol": symbol, "error": str(exc)})
+                self._trade_logger.log_shift_failed(symbol, trigger_side, "resolve_instruments")
                 pos.state = "OPEN"
                 return
 
@@ -828,6 +833,7 @@ class CondorRunner:
             ])
         except QuoteError as exc:
             logger.error("shift_entry_quote_failed", extra={"symbol": symbol, "error": str(exc)})
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "fetch_new_quotes")
             pos.state = "OPEN"
             return
 
@@ -839,6 +845,7 @@ class CondorRunner:
         q_nl = new_quotes.get(new_long_inst.instrument_token)
         if not q_ns or not q_nl:
             logger.error("shift_entry_quotes_missing", extra={"symbol": symbol})
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "fetch_new_quotes")
             pos.state = "OPEN"
             return
 
@@ -853,6 +860,7 @@ class CondorRunner:
             ])
         except QuoteError as exc:
             logger.error("shift_close_quote_failed", extra={"symbol": symbol, "error": str(exc)})
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "fetch_close_quotes")
             pos.state = "OPEN"
             return
 
@@ -873,6 +881,7 @@ class CondorRunner:
         )
         if not self._place_order_safe(buy_new_hedge):
             logger.error("shift_entry_long_failed", extra={"symbol": symbol})
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_new_hedge")
             pos.state = "OPEN"
             return
         self._trade_logger.log_order(buy_new_hedge, EventType.ORDER_PLACED)
@@ -892,6 +901,7 @@ class CondorRunner:
         )
         if not self._place_order_safe(buy_back):
             logger.error("shift_close_short_failed", extra={"symbol": symbol})
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_back_short")
             pos.state = "OPEN"
             return
         self._trade_logger.log_order(buy_back, EventType.ORDER_PLACED)
@@ -910,6 +920,7 @@ class CondorRunner:
         )
         if not self._place_order_safe(sell_hedge):
             logger.error("shift_close_long_failed", extra={"symbol": symbol})
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "sell_old_hedge")
             pos.state = "OPEN"
             return
         self._trade_logger.log_order(sell_hedge, EventType.ORDER_PLACED)
@@ -930,6 +941,7 @@ class CondorRunner:
         )
         if not self._place_order_safe(sell_new_short):
             logger.error("shift_entry_short_failed", extra={"symbol": symbol})
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "sell_new_short")
             pos.state = "OPEN"
             return
         self._trade_logger.log_order(sell_new_short, EventType.ORDER_PLACED)
