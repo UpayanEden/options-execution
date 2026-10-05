@@ -768,63 +768,13 @@ class CondorRunner:
         run_id = f"shift_{symbol}_{trigger_side}_{datetime.now(IST).strftime('%Y%m%d_%H%M%S')}"
         qty = pos.lots * pos.lot_size
 
-        # ── Step 1: Close only the triggered side's spread ─────────────────
+        # Identify the threatened side's existing legs
         if trigger_side == "PUT":
             to_close_short, to_close_long = pos.short_put, pos.long_put
         else:
             to_close_short, to_close_long = pos.short_call, pos.long_call
 
-        try:
-            close_quotes = self._broker.get_quotes([
-                (to_close_short.instrument_token, to_close_short.trading_symbol),
-                (to_close_long.instrument_token,  to_close_long.trading_symbol),
-            ])
-        except QuoteError as exc:
-            logger.error("shift_close_quote_failed", extra={"symbol": symbol, "error": str(exc)})
-            pos.state = "OPEN"
-            return
-
-        # Buy back the short leg
-        q_short = close_quotes.get(to_close_short.instrument_token)
-        close_short_price = q_short.ask if q_short else to_close_short.strike * Decimal("0.005")
-        buy_back = Order(
-            strategy_run_id=run_id,
-            leg_index=0,
-            trading_symbol=to_close_short.trading_symbol,
-            instrument_token=to_close_short.instrument_token,
-            side=Side.BUY,
-            quantity=qty,
-            limit_price=close_short_price,
-        )
-        if not self._place_order_safe(buy_back):
-            logger.error("shift_close_short_failed", extra={"symbol": symbol})
-            pos.state = "OPEN"
-            return
-        self._trade_logger.log_order(buy_back, EventType.ORDER_PLACED)
-
-        time.sleep(_ORDER_SPACING_SECONDS)
-
-        # Sell back the long hedge
-        q_long = close_quotes.get(to_close_long.instrument_token)
-        close_long_price = q_long.bid if q_long else Decimal("0")
-        sell_hedge = Order(
-            strategy_run_id=run_id,
-            leg_index=1,
-            trading_symbol=to_close_long.trading_symbol,
-            instrument_token=to_close_long.instrument_token,
-            side=Side.SELL,
-            quantity=qty,
-            limit_price=close_long_price,
-        )
-        if not self._place_order_safe(sell_hedge):
-            logger.error("shift_close_long_failed", extra={"symbol": symbol})
-            pos.state = "OPEN"
-            return
-        self._trade_logger.log_order(sell_hedge, EventType.ORDER_PLACED)
-
-        close_debit = float(close_short_price) - float(close_long_price)
-
-        # ── Step 2: Enter new spread for the same side at current spot ──────
+        # ── Step 1: Resolve new spread instruments and quotes first ─────────
         spot = self._get_spot(symbol)
         if spot is None or spot <= 0:
             logger.error("shift_no_spot_for_reentry", extra={"symbol": symbol})
@@ -895,10 +845,26 @@ class CondorRunner:
         new_short_price = _mid(q_ns)
         new_long_price  = _mid(q_nl)
 
-        # Buy the new hedge first
+        # Fetch close quotes for old legs
+        try:
+            close_quotes = self._broker.get_quotes([
+                (to_close_short.instrument_token, to_close_short.trading_symbol),
+                (to_close_long.instrument_token,  to_close_long.trading_symbol),
+            ])
+        except QuoteError as exc:
+            logger.error("shift_close_quote_failed", extra={"symbol": symbol, "error": str(exc)})
+            pos.state = "OPEN"
+            return
+
+        q_short = close_quotes.get(to_close_short.instrument_token)
+        close_short_price = q_short.ask if q_short else to_close_short.strike * Decimal("0.005")
+        q_long = close_quotes.get(to_close_long.instrument_token)
+        close_long_price = q_long.bid if q_long else Decimal("0")
+
+        # ── Step 2: Buy new hedge first (protection before closing old) ─────
         buy_new_hedge = Order(
             strategy_run_id=run_id,
-            leg_index=2,
+            leg_index=0,
             trading_symbol=new_long_inst.trading_symbol,
             instrument_token=new_long_inst.instrument_token,
             side=Side.BUY,
@@ -913,7 +879,46 @@ class CondorRunner:
 
         time.sleep(_ORDER_SPACING_SECONDS)
 
-        # Sell the new short
+        # ── Step 3: Close the old spread ─────────────────────────────────────
+        # Buy back the old short leg
+        buy_back = Order(
+            strategy_run_id=run_id,
+            leg_index=1,
+            trading_symbol=to_close_short.trading_symbol,
+            instrument_token=to_close_short.instrument_token,
+            side=Side.BUY,
+            quantity=qty,
+            limit_price=close_short_price,
+        )
+        if not self._place_order_safe(buy_back):
+            logger.error("shift_close_short_failed", extra={"symbol": symbol})
+            pos.state = "OPEN"
+            return
+        self._trade_logger.log_order(buy_back, EventType.ORDER_PLACED)
+
+        time.sleep(_ORDER_SPACING_SECONDS)
+
+        # Sell back the old long hedge
+        sell_hedge = Order(
+            strategy_run_id=run_id,
+            leg_index=2,
+            trading_symbol=to_close_long.trading_symbol,
+            instrument_token=to_close_long.instrument_token,
+            side=Side.SELL,
+            quantity=qty,
+            limit_price=close_long_price,
+        )
+        if not self._place_order_safe(sell_hedge):
+            logger.error("shift_close_long_failed", extra={"symbol": symbol})
+            pos.state = "OPEN"
+            return
+        self._trade_logger.log_order(sell_hedge, EventType.ORDER_PLACED)
+
+        close_debit = float(close_short_price) - float(close_long_price)
+
+        time.sleep(_ORDER_SPACING_SECONDS)
+
+        # ── Step 4: Sell the new short to complete the spread ────────────────
         sell_new_short = Order(
             strategy_run_id=run_id,
             leg_index=3,
@@ -931,7 +936,7 @@ class CondorRunner:
 
         new_side_credit = float(new_short_price) - float(new_long_price)
 
-        # ── Step 3: Mutate position in-place ────────────────────────────────
+        # ── Step 5: Mutate position in-place ────────────────────────────────
         if trigger_side == "PUT":
             pos.short_put = new_short_inst
             pos.long_put  = new_long_inst
