@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS positions (
     lots             INTEGER NOT NULL,
     lot_size         INTEGER NOT NULL,
     initial_credit   REAL    NOT NULL DEFAULT 0.0,
+    put_dist_pct     REAL    NOT NULL DEFAULT 5.0,
+    call_dist_pct    REAL    NOT NULL DEFAULT 5.0,
     entry_time       TEXT    NOT NULL,
     shift_count      INTEGER NOT NULL DEFAULT 0,
     pnl              REAL             DEFAULT 0.0,
@@ -53,6 +55,12 @@ def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute(_CREATE_SQL)
+    # Migrate: add dist_pct columns if they don't exist yet (existing DBs)
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(positions)")}
+    if "put_dist_pct" not in existing:
+        conn.execute("ALTER TABLE positions ADD COLUMN put_dist_pct REAL NOT NULL DEFAULT 5.0")
+    if "call_dist_pct" not in existing:
+        conn.execute("ALTER TABLE positions ADD COLUMN call_dist_pct REAL NOT NULL DEFAULT 5.0")
     conn.commit()
     return conn
 
@@ -83,6 +91,8 @@ def _pos_to_row(pos: "CondorPosition") -> dict:  # noqa: F821
         "lots":             pos.lots,
         "lot_size":         pos.lot_size,
         "initial_credit":   pos.initial_credit,
+        "put_dist_pct":     pos.put_dist_pct,
+        "call_dist_pct":    pos.call_dist_pct,
         "entry_time":       pos.entry_time.isoformat(),
         "shift_count":      pos.shift_count,
         "pnl":              0.0,

@@ -86,6 +86,12 @@ class CondorPosition:
     initial_credit: float = 0.0
     """Net premium credit received at entry (per share)."""
 
+    put_dist_pct: float = 5.0
+    """Short put distance from spot as % — stored at entry so shifts don't need config."""
+
+    call_dist_pct: float = 5.0
+    """Short call distance from spot as % — stored at entry so shifts don't need config."""
+
     entry_time: datetime = field(default_factory=lambda: datetime.now(IST))
     """Timestamp of position entry."""
 
@@ -572,6 +578,8 @@ class CondorRunner:
             lots=lots,
             lot_size=lot_size,
             initial_credit=initial_credit,
+            put_dist_pct=stock.put_dist_pct,
+            call_dist_pct=stock.call_dist_pct,
             broker_order_ids=order_ids,
             state="OPEN",
         )
@@ -755,18 +763,6 @@ class CondorRunner:
             "long_call":  float(pos.long_call.strike),
         }
 
-        # Find stock config for OTM distances
-        stock_cfg: Optional[StockConfig] = None
-        for s in self._config.stocks:
-            if s.symbol == symbol:
-                stock_cfg = s
-                break
-        if stock_cfg is None:
-            logger.error("shift_no_stock_config", extra={"symbol": symbol})
-            self._trade_logger.log_shift_failed(symbol, trigger_side, "no_stock_config")
-            pos.state = "OPEN"
-            return
-
         run_id = f"shift_{symbol}_{trigger_side}_{datetime.now(IST).strftime('%Y%m%d_%H%M%S')}"
         qty = pos.lots * pos.lot_size
 
@@ -793,7 +789,7 @@ class CondorRunner:
             return
 
         if trigger_side == "PUT":
-            new_short_target = spot * (1.0 - stock_cfg.put_dist_pct / 100.0)
+            new_short_target = spot * (1.0 - pos.put_dist_pct / 100.0)
             new_long_target  = new_short_target - wing_width
             new_short_strike = self._snap_to_strike(new_short_target, available_puts)
             new_long_strike  = self._snap_to_strike(new_long_target,  available_puts)
@@ -810,7 +806,7 @@ class CondorRunner:
                 pos.state = "OPEN"
                 return
         else:
-            new_short_target = spot * (1.0 + stock_cfg.call_dist_pct / 100.0)
+            new_short_target = spot * (1.0 + pos.call_dist_pct / 100.0)
             new_long_target  = new_short_target + wing_width
             new_short_strike = self._snap_to_strike(new_short_target, available_calls)
             new_long_strike  = self._snap_to_strike(new_long_target,  available_calls)
@@ -1113,6 +1109,8 @@ class CondorRunner:
             lots=int(row["lots"]),
             lot_size=lot_size,
             initial_credit=float(row.get("initial_credit", 0) or 0),
+            put_dist_pct=float(row.get("put_dist_pct") or 5.0),
+            call_dist_pct=float(row.get("call_dist_pct") or 5.0),
             entry_time=entry_time,
             shift_count=int(row.get("shift_count", 0) or 0),
             broker_order_ids=broker_order_ids,
