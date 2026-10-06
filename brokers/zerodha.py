@@ -239,8 +239,12 @@ class ZerodhaBroker(BrokerAdapter):
             return {}
 
         # Build list of "EXCHANGE:SYMBOL" keys for kite.quote()
-        # We use the trading symbol directly; exchange is NFO for options
-        symbol_keys = [f"NFO:{sym}" for _, sym in instruments]
+        # Index instruments (NIFTY, BANKNIFTY etc.) live on NSE, options on NFO
+        _index_tokens = set(self._INDEX_TOKENS.values())
+        symbol_keys = [
+            f"NSE:{sym}" if tok in _index_tokens else f"NFO:{sym}"
+            for tok, sym in instruments
+        ]
         token_map = {sym: tok for tok, sym in instruments}
 
         result: dict[int, Quote] = {}
