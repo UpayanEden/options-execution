@@ -1308,13 +1308,14 @@ class CondorRunner:
             Spot price as float, or None if unavailable.
         """
         try:
-            # ── Index (e.g. NIFTY) ────────────────────────────────────────
-            if hasattr(self._broker, "get_index_token"):
-                idx_token = self._broker.get_index_token(symbol)  # type: ignore[attr-defined]
-                if idx_token:
-                    quotes = self._broker.get_quotes([(idx_token, symbol)])
-                    if idx_token in quotes:
-                        return float(quotes[idx_token].ltp)
+            # ── Index (e.g. NIFTY) — fetch by integer token, not "NSE:NIFTY" ──
+            # kite.quote(["NSE:NIFTY"]) silently fails because Zerodha returns
+            # the key as "NSE:NIFTY 50" (full tradingsymbol).  Integer token is
+            # unambiguous and works reliably.
+            if hasattr(self._broker, "get_index_spot"):
+                spot = self._broker.get_index_spot(symbol)  # type: ignore[attr-defined]
+                if spot and spot > 0:
+                    return spot
 
             # ── NSE equity (uses NSE: prefix, not NFO:) ────────────────────
             if hasattr(self._broker, "get_equity_spot"):

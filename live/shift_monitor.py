@@ -334,15 +334,12 @@ class ShiftMonitor:
         """
         underlying = getattr(pos, "underlying", "")
         try:
-            # Index underlyings (NIFTY, BANKNIFTY, etc.)
-            if hasattr(self._broker, "get_index_token"):
-                idx_token = self._broker.get_index_token(underlying)
-                if idx_token:
-                    quotes = self._broker.get_quotes([(idx_token, underlying)])
-                    if idx_token in quotes:
-                        ltp = float(quotes[idx_token].ltp)
-                        if ltp > 0:
-                            return ltp
+            # Index underlyings (NIFTY, BANKNIFTY, etc.) — use integer token
+            # to avoid "NSE:NIFTY 50" naming mismatch in Zerodha API response.
+            if hasattr(self._broker, "get_index_spot"):
+                spot = self._broker.get_index_spot(underlying)
+                if spot and spot > 0:
+                    return spot
 
             # NSE equities — must use NSE: prefix, not NFO:
             if hasattr(self._broker, "get_equity_spot"):

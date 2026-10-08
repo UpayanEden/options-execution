@@ -640,6 +640,32 @@ class ZerodhaBroker(BrokerAdapter):
         """Return the Zerodha instrument token for a known NSE index, else None."""
         return self._INDEX_TOKENS.get(underlying.upper())
 
+    def get_index_spot(self, underlying: str) -> Optional[float]:
+        """
+        Fetch the LTP of an NSE index (e.g. 'NIFTY') using the integer
+        instrument token directly.
+
+        Using the integer token avoids the 'NSE:NIFTY 50' naming mismatch —
+        kite.quote(["NSE:NIFTY"]) fails silently because the Zerodha API
+        returns the key as "NSE:NIFTY 50" (the full tradingsymbol with space),
+        not "NSE:NIFTY".  Fetching by integer token is unambiguous.
+        """
+        token = self._INDEX_TOKENS.get(underlying.upper())
+        if not token:
+            return None
+        try:
+            raw = self._kite.quote([token])
+            # Kite returns the response keyed by integer token
+            data = raw.get(token) or raw.get(str(token)) or {}
+            ltp = data.get("last_price", 0)
+            return float(ltp) if ltp else None
+        except Exception as exc:
+            logger.warning(
+                "index_spot_failed",
+                extra={"symbol": underlying, "token": token, "error": str(exc)},
+            )
+            return None
+
     def get_equity_spot(self, symbol: str) -> Optional[float]:
         """
         Fetch the current LTP of an NSE equity (e.g. 'RELIANCE') using the
