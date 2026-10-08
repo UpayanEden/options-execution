@@ -45,9 +45,9 @@ shifting_condor:
   monitor_interval_seconds: 60  # check spot price every N seconds
 
   # ── Exit rules ────────────────────────────────────────────────────────────
-  take_profit_pct: 0.50         # exit if current cost-to-close <= (1 - 0.50) * entry_credit
-  # Set to null to hold to expiry
+  take_profit_pct: 0.80         # exit if current cost-to-close <= (1 - 0.80) * entry_credit
   stop_loss_pct: 2.0            # exit if unrealised loss >= stop_loss_pct * entry_credit
+  dte_exit: 2                   # force-close when days-to-expiry <= this (2 = 2 days before expiry)
 
   # ── Entry quality filter ──────────────────────────────────────────────────
   # Minimum net credit (INR per lot) required to enter a new condor.

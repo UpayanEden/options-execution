@@ -218,6 +218,7 @@ class CondorRunner:
                 logger_=self._trade_logger,
                 on_shift_cb=self.shift_condor,
                 kill_switch=self._kill_switch,
+                on_exit_cb=self._handle_exit,
             )
             self._shift_monitor.start()
             self.monitor_positions(self._positions)
@@ -724,6 +725,22 @@ class CondorRunner:
                 "exit_debit": round(exit_debit, 4),
             },
         )
+
+    def _handle_exit(self, pos: CondorPosition, reason: str) -> None:
+        """
+        Exit callback for non-shift triggers (e.g. DTE_EXIT).
+        Closes all four legs and removes the position from monitoring.
+        """
+        symbol = pos.symbol
+        logger.warning("exit_triggered_by_monitor",
+                       extra={"symbol": symbol, "reason": reason})
+        self._trade_logger.log(
+            EventType.TAKE_PROFIT_HIT,
+            symbol,
+            {"reason": reason, "shift_count": pos.shift_count},
+            level="WARNING",
+        )
+        self.exit_condor(pos, reason)
 
     # ── Shift ──────────────────────────────────────────────────────────────
 

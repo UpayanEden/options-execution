@@ -95,6 +95,9 @@ class StrategyParams:
     default_lots: int = 0
     """Default lots for all stocks. 0 = auto-size from capital. Overridden per-stock by StockConfig.lots."""
 
+    dte_exit: int = 2
+    """Close positions when days-to-expiry reaches this threshold (default: 2 days before expiry)."""
+
 
 @dataclass
 class LiveConfig:
@@ -196,6 +199,7 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
         entry_start=str(strat_raw.get("entry_start", "09:30")),
         entry_end=str(strat_raw.get("entry_end", "14:00")),
         default_lots=int(strat_raw.get("default_lots", 0)),
+        dte_exit=int(strat_raw.get("dte_exit", 2)),
     )
 
     # ── Zerodha credentials (yaml first, env overrides) ────────────────────

@@ -97,6 +97,7 @@ class ShiftingCondorConfig:
     monitor_interval_seconds: int
     take_profit_pct: float
     stop_loss_pct: float
+    dte_exit: int                # force-close when days-to-expiry ≤ this
     min_net_credit: float        # abort entry if credit-per-unit ≤ this
     max_session_loss: float      # stop session if total realised loss ≥ this (INR)
 
@@ -127,8 +128,9 @@ def load_config(path: str = "config/shifting_condor.yaml") -> ShiftingCondorConf
         order_wait_seconds       = int(sc.get("order_wait_seconds", 30)),
         max_reprice_attempts     = int(sc.get("max_reprice_attempts", 5)),
         monitor_interval_seconds = int(sc.get("monitor_interval_seconds", 60)),
-        take_profit_pct          = float(sc.get("take_profit_pct", 0.50)),
+        take_profit_pct          = float(sc.get("take_profit_pct", 0.80)),
         stop_loss_pct            = float(sc.get("stop_loss_pct", 2.0)),
+        dte_exit                 = int(sc.get("dte_exit", 2)),
         min_net_credit           = float(sc.get("min_net_credit", 1.0)),
         max_session_loss         = float(sc.get("max_session_loss", 15000.0)),
     )
@@ -868,6 +870,31 @@ class ShiftingCondorLive:
             bc = min(bc_cands)
             sp = bp = 0.0
 
+        # ── Per-lot verification against instrument master ─────────────────
+        # Resolve one instrument to confirm lot_size hasn't changed since entry.
+        if open_put:
+            _verify_res = self._resolve_trading_symbol(expiry, bp, "PE")
+            if _verify_res:
+                _, _, _master_lot_size = _verify_res
+                if _master_lot_size != self._lot_size:
+                    logger.warning("lot_size_mismatch_corrected",
+                                   extra={"expected": self._lot_size,
+                                          "actual": _master_lot_size})
+                    print(f"\n  [Safeguard] Lot size mismatch: expected={self._lot_size}, "
+                          f"master={_master_lot_size}. Using master value.")
+                    self._lot_size = _master_lot_size
+        elif open_call:
+            _verify_res = self._resolve_trading_symbol(expiry, bc, "CE")
+            if _verify_res:
+                _, _, _master_lot_size = _verify_res
+                if _master_lot_size != self._lot_size:
+                    logger.warning("lot_size_mismatch_corrected",
+                                   extra={"expected": self._lot_size,
+                                          "actual": _master_lot_size})
+                    print(f"\n  [Safeguard] Lot size mismatch: expected={self._lot_size}, "
+                          f"master={_master_lot_size}. Using master value.")
+                    self._lot_size = _master_lot_size
+
         quantity = self._lots * self._lot_size
 
         # ── Lot size display ───────────────────────────────────────────────
@@ -935,6 +962,14 @@ class ShiftingCondorLive:
             sym_sp, tok_sp, ls = res
             q_sp  = self._get_quote(sym_sp)
             price = self._mid_price(q_sp) if q_sp else 1.0
+            # ── Minimum limit price check before SELL order ────────────────
+            if price < self._cfg.min_net_credit:
+                logger.warning("short_put_below_min_premium",
+                               extra={"symbol": sym_sp, "price": price,
+                                      "min": self._cfg.min_net_credit})
+                print(f"\n  [Safeguard] Short put premium {price:.2f} < "
+                      f"min_net_credit={self._cfg.min_net_credit:.2f}. "
+                      f"Proceeding — spread credit will be checked after full entry.")
             oid   = self._place_order_with_retry(sym_sp, "SELL", quantity, price, tag="SHC_SP")
             if not oid:
                 logger.error("short_put_failed", extra={"symbol": sym_sp})
@@ -955,6 +990,14 @@ class ShiftingCondorLive:
             sym_sc, tok_sc, ls = res
             q_sc  = self._get_quote(sym_sc)
             price = self._mid_price(q_sc) if q_sc else 1.0
+            # ── Minimum limit price check before SELL order ────────────────
+            if price < self._cfg.min_net_credit:
+                logger.warning("short_call_below_min_premium",
+                               extra={"symbol": sym_sc, "price": price,
+                                      "min": self._cfg.min_net_credit})
+                print(f"\n  [Safeguard] Short call premium {price:.2f} < "
+                      f"min_net_credit={self._cfg.min_net_credit:.2f}. "
+                      f"Proceeding — spread credit will be checked after full entry.")
             oid   = self._place_order_with_retry(sym_sc, "SELL", quantity, price, tag="SHC_SC")
             if not oid:
                 logger.error("short_call_failed", extra={"symbol": sym_sc})
@@ -1456,6 +1499,17 @@ class ShiftingCondorLive:
                 # Expiry reached
                 if date.today() >= expiry:
                     exit_reason = "EXPIRY"
+                    break
+
+                # 2-DTE exit: close 2 trading days before expiry
+                dte_remaining = (expiry - date.today()).days
+                if dte_remaining <= self._cfg.dte_exit:
+                    exit_reason = "DTE_EXIT"
+                    logger.info("dte_exit_triggered",
+                                extra={"dte_remaining": dte_remaining,
+                                       "dte_exit": self._cfg.dte_exit})
+                    print(f"\n  [DTE EXIT] DTE={dte_remaining} ≤ dte_exit={self._cfg.dte_exit}. "
+                          f"Closing all legs early.")
                     break
 
                 # Past market close — force exit

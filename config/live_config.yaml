@@ -23,6 +23,7 @@ strategy:
   entry_start: "09:30"      # Earliest entry time (IST)
   entry_end: "14:00"        # Latest entry time (IST)
   default_lots: 0           # Lots per trade for all stocks (0 = auto-size from capital)
+  dte_exit: 2               # Force-close positions when DTE ≤ this (2 = 2 days before expiry)
 
 # ── Zerodha credentials (prefer env vars over hardcoding here) ──────────────
 zerodha:

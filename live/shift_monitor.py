@@ -56,6 +56,7 @@ class ShiftMonitor:
         logger_: TradeLogger,
         on_shift_cb: Callable[[Any, str], None],
         kill_switch: Optional[KillSwitch] = None,
+        on_exit_cb: Optional[Callable[[Any, str], None]] = None,
     ) -> None:
         """
         Initialise the shift monitor.
@@ -71,12 +72,16 @@ class ShiftMonitor:
                           trigger_side is "PUT" or "CALL".  The runner closes only
                           the threatened spread and re-enters it at new strikes.
             kill_switch:  KillSwitch instance. If None, a new one is created.
+            on_exit_cb:   Optional callback for non-shift exits (DTE_EXIT).
+                          Called as on_exit_cb(pos, reason) where reason is e.g.
+                          "DTE_EXIT".  If None, exit triggers are logged but not acted on.
         """
         self._broker = broker
         self._positions = positions
         self._config = config
         self._trade_logger = logger_
         self._on_shift_cb = on_shift_cb
+        self._on_exit_cb = on_exit_cb
         self._kill_switch = kill_switch or KillSwitch()
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
@@ -192,6 +197,18 @@ class ShiftMonitor:
                 trigger_side = "PUT" if "PUT" in reason else "CALL"
                 logger.warning("shift_triggered", extra={"symbol": symbol, "reason": reason, "side": trigger_side})
                 self._on_shift_cb(pos, trigger_side)
+            elif reason.startswith("DTE_EXIT"):
+                logger.warning("dte_exit_triggered_by_monitor",
+                               extra={"symbol": symbol, "reason": reason})
+                if self._on_exit_cb is not None:
+                    self._on_exit_cb(pos, "DTE_EXIT")
+                else:
+                    self._trade_logger.log(
+                        EventType.SHIFT_TRIGGERED,
+                        symbol,
+                        {"reason": reason, "action": "exit_cb_not_set"},
+                        level="WARNING",
+                    )
         except BrokerError as exc:
             logger.error(
                 "shift_monitor_broker_error",
@@ -207,11 +224,12 @@ class ShiftMonitor:
 
     def _check_position(self, pos: Any, spot_cache: Optional[Dict[str, Optional[float]]] = None) -> Tuple[bool, str]:
         """
-        Evaluate a single CondorPosition for shift triggers.
+        Evaluate a single CondorPosition for shift or exit triggers.
 
-        No take-profit — the strategy holds to expiry.  Only checks:
-          SHIFT_PUT:   spot < short_put_strike × (1 - shift_trigger_pct/100)
-          SHIFT_CALL:  spot > short_call_strike × (1 + shift_trigger_pct/100)
+        Checks in priority order:
+          1. DTE_EXIT: expiry within dte_exit days (from live_config) → trigger exit
+          2. SHIFT_PUT:  spot < short_put_strike × (1 + shift_trigger_pct/100) → shift
+          3. SHIFT_CALL: spot > short_call_strike × (1 - shift_trigger_pct/100) → shift
 
         Args:
             pos:        CondorPosition dataclass.
@@ -221,9 +239,25 @@ class ShiftMonitor:
             Tuple (should_act: bool, reason: str). reason is empty string
             when should_act is False.
         """
+        from datetime import date as _date
         symbol: str = getattr(pos, "symbol", "UNKNOWN")
 
-        # ── Fetch live spot price (use cache if available) ─────────────────
+        # ── 1. DTE exit check (2 days before expiry) ──────────────────────
+        expiry = getattr(pos, "expiry", None)
+        if expiry is not None:
+            dte_exit_threshold = getattr(self._config.strategy, "dte_exit", 2)
+            try:
+                dte_remaining = (expiry - _date.today()).days
+            except Exception:
+                dte_remaining = 999
+            if dte_remaining <= dte_exit_threshold:
+                logger.warning("dte_exit_threshold_reached",
+                               extra={"symbol": symbol,
+                                      "dte_remaining": dte_remaining,
+                                      "threshold": dte_exit_threshold})
+                return True, f"DTE_EXIT: dte={dte_remaining} ≤ threshold={dte_exit_threshold}"
+
+        # ── 2. Fetch live spot price (use cache if available) ──────────────
         spot: Optional[float] = None
         if spot_cache is not None:
             underlying = getattr(pos, "underlying", "")
@@ -234,7 +268,7 @@ class ShiftMonitor:
             logger.warning("shift_monitor_no_spot", extra={"symbol": symbol})
             return False, ""
 
-        # ── Shift checks ───────────────────────────────────────────────────
+        # ── 3. Shift checks ────────────────────────────────────────────────
         shift_trigger_pct = self._config.strategy.shift_trigger_pct
         short_put_strike = float(pos.short_put.strike)
         short_call_strike = float(pos.short_call.strike)

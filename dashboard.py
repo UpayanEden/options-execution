@@ -164,10 +164,10 @@ if risk_err:
     st.error(f"Risk config error: {risk_err}")
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab_status, tab_quotes, tab_picker, tab_tester, tab_config, tab_entry, tab_monitor, tab_exit, tab_history, tab_alerts, tab_auto, tab_intel = st.tabs([
+tab_status, tab_quotes, tab_picker, tab_tester, tab_config, tab_entry, tab_monitor, tab_exit, tab_history, tab_alerts, tab_auto, tab_intel, tab_reports = st.tabs([
     "📋 Status", "📈 Quotes", "🔍 Stock Picker", "🧪 Strategy Tester", "⚙️ Config Editor",
     "🚀 Entry", "📡 Monitor", "🏁 Exit", "📜 History", "🔔 Alerts", "🤖 Auto Trader",
-    "🧠 Intelligence"
+    "🧠 Intelligence", "📊 Reports"
 ])
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -448,7 +448,7 @@ with tab_config:
 
     import yaml
 
-    cfg_tab1, cfg_tab2 = st.tabs(["📄 Strategy Config", "🎛️ Risk Config"])
+    cfg_tab1, cfg_tab2, cfg_tab3, cfg_tab4 = st.tabs(["📄 Strategy Config", "🎛️ Risk Config", "🏗️ Live Config", "🔑 Credentials"])
 
     # ── Strategy config editor ─────────────────────────────────────────────
     with cfg_tab1:
@@ -617,6 +617,135 @@ with tab_config:
 
         except Exception as e:
             st.error(f"Could not load risk config: {e}")
+
+    # ── Live Config editor ─────────────────────────────────────────────────
+    with cfg_tab3:
+        st.write("**`config/live_config.yaml`**")
+        st.caption("Changes here affect the live auto-trader on next run. Max open positions and global strategy params apply system-wide.")
+        try:
+            import yaml as _lcy
+            _lc_path = os.environ.get("CONFIG_PATH", "config/live_config.yaml")
+            with open(_lc_path) as _lf:
+                _lc_raw = _lcy.safe_load(_lf)
+            _lc_cap = _lc_raw.get("capital", {})
+            _lc_strat = _lc_raw.get("strategy", {})
+
+            with st.form("live_config_form"):
+                st.write("**Mode & Capital**")
+                _lc_c1, _lc_c2, _lc_c3 = st.columns(3)
+                _lc_mode = _lc_c1.selectbox("Mode", ["paper", "live"],
+                                             index=0 if _lc_raw.get("mode", "paper") == "paper" else 1)
+                _lc_capital = _lc_c2.number_input("Total Capital (₹)", min_value=100000, max_value=50000000,
+                                                   value=int(_lc_cap.get("total_capital", 2000000)), step=50000)
+                _lc_max_pos = _lc_c3.number_input("Max Open Positions", min_value=1, max_value=50,
+                                                   value=int(_lc_cap.get("max_open_positions", 10)), step=1)
+
+                st.write("**Strategy Parameters**")
+                _lc_s1, _lc_s2, _lc_s3 = st.columns(3)
+                _lc_shift_trig = _lc_s1.number_input("Shift Trigger (%)", min_value=0.1, max_value=10.0,
+                                                       value=float(_lc_strat.get("shift_trigger_pct", 1.0)), step=0.1, format="%.1f")
+                _lc_wing = _lc_s2.number_input("Wing Width (%)", min_value=0.5, max_value=10.0,
+                                                value=float(_lc_strat.get("wing_width_pct", 2.0)), step=0.5, format="%.1f")
+                _lc_def_lots = _lc_s3.number_input("Default Lots (0=auto)", min_value=0, max_value=50,
+                                                    value=int(_lc_strat.get("default_lots", 0)), step=1)
+
+                _lc_s4, _lc_s5, _lc_s6, _lc_s7, _lc_s8 = st.columns(5)
+                _lc_min_dte = _lc_s4.number_input("Min DTE", min_value=1, max_value=60,
+                                                   value=int(_lc_strat.get("min_dte", 20)), step=1)
+                _lc_max_dte = _lc_s5.number_input("Max DTE", min_value=5, max_value=120,
+                                                   value=int(_lc_strat.get("max_dte", 45)), step=1)
+                _lc_dte_exit = _lc_s8.number_input("Close DTE (≤ N days)", min_value=0, max_value=10,
+                                                    value=int(_lc_strat.get("dte_exit", 2)), step=1,
+                                                    help="Close all positions when DTE ≤ this (2 = 2 days before expiry)")
+                _lc_entry_start = _lc_s6.text_input("Entry Start (IST)", value=_lc_strat.get("entry_start", "09:30"))
+                _lc_entry_end   = _lc_s7.text_input("Entry End (IST)", value=_lc_strat.get("entry_end", "14:00"))
+
+                _lc_save = st.form_submit_button("💾 Save Live Config", type="primary")
+
+            if _lc_save:
+                try:
+                    _lc_raw["mode"] = _lc_mode
+                    _lc_raw.setdefault("capital", {})["total_capital"] = int(_lc_capital)
+                    _lc_raw["capital"]["max_open_positions"] = int(_lc_max_pos)
+                    _lc_raw.setdefault("strategy", {})["shift_trigger_pct"] = float(_lc_shift_trig)
+                    _lc_raw["strategy"]["wing_width_pct"] = float(_lc_wing)
+                    _lc_raw["strategy"]["default_lots"] = int(_lc_def_lots)
+                    _lc_raw["strategy"]["min_dte"] = int(_lc_min_dte)
+                    _lc_raw["strategy"]["max_dte"] = int(_lc_max_dte)
+                    _lc_raw["strategy"]["entry_start"] = _lc_entry_start
+                    _lc_raw["strategy"]["entry_end"] = _lc_entry_end
+                    _lc_raw["strategy"]["dte_exit"] = int(_lc_dte_exit)
+                    with open(_lc_path, "w") as _lf2:
+                        _lcy.dump(_lc_raw, _lf2, default_flow_style=False, sort_keys=False)
+                    st.success("✅ live_config.yaml saved! New positions will use these settings.")
+                    st.rerun()
+                except Exception as _lce:
+                    st.error(f"Save failed: {_lce}")
+
+        except Exception as _lc_err:
+            st.error(f"Could not load live config: {_lc_err}")
+
+    # ── Credentials editor ─────────────────────────────────────────────────
+    with cfg_tab4:
+        st.write("**Zerodha API Credentials**")
+        st.caption("Access token refreshes daily. Save here to apply immediately — no restart needed.")
+
+        _cred_path = Path("config/credentials.env")
+
+        # Read current values (masked)
+        _cur_key   = os.environ.get("ZERODHA_API_KEY", "")
+        _cur_token = os.environ.get("ZERODHA_ACCESS_TOKEN", "")
+        _cur_secret = os.environ.get("ZERODHA_API_SECRET", "")
+
+        def _mask(v: str) -> str:
+            return v[:6] + "****" if len(v) > 6 else ("(not set)" if not v else v[:2] + "**")
+
+        st.info(
+            f"Current API Key: `{_mask(_cur_key)}`  \n"
+            f"Current Token: `{_mask(_cur_token)}`"
+        )
+
+        with st.form("credentials_form"):
+            _new_token = st.text_input(
+                "Access Token (refreshed daily)",
+                value="",
+                type="password",
+                help="Paste today's Zerodha access token here. Leave blank to keep the current one.",
+            )
+            st.caption("To update API Key / Secret (rarely needed):")
+            _new_key = st.text_input(
+                "API Key", value="", type="password",
+                help="Leave blank to keep current."
+            )
+            _new_secret = st.text_input(
+                "API Secret", value="", type="password",
+                help="Leave blank to keep current."
+            )
+            _cred_save = st.form_submit_button("💾 Save & Apply Credentials", type="primary")
+
+        if _cred_save:
+            try:
+                from dotenv import set_key as _set_key
+                _saved = []
+                if _new_token.strip():
+                    _set_key(str(_cred_path), "ZERODHA_ACCESS_TOKEN", _new_token.strip())
+                    os.environ["ZERODHA_ACCESS_TOKEN"] = _new_token.strip()
+                    _saved.append("ACCESS_TOKEN")
+                if _new_key.strip():
+                    _set_key(str(_cred_path), "ZERODHA_API_KEY", _new_key.strip())
+                    os.environ["ZERODHA_API_KEY"] = _new_key.strip()
+                    _saved.append("API_KEY")
+                if _new_secret.strip():
+                    _set_key(str(_cred_path), "ZERODHA_API_SECRET", _new_secret.strip())
+                    os.environ["ZERODHA_API_SECRET"] = _new_secret.strip()
+                    _saved.append("API_SECRET")
+                if _saved:
+                    st.success(f"✅ Saved and applied: {', '.join(_saved)}. In effect immediately.")
+                    st.rerun()
+                else:
+                    st.warning("Nothing to save — all fields were blank.")
+            except Exception as _ce2:
+                st.error(f"Save failed: {_ce2}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1999,15 +2128,22 @@ with tab_monitor:
                                 mtm_float = float(mtm)
                                 ctc_float = float(cost_to_close)
 
-                                mc1, mc2, mc3 = st.columns(3)
+                                mc1, mc2, mc3, mc4 = st.columns(4)
                                 mc1.metric(
-                                    "MTM P&L",
+                                    "Exit P&L (if closed now)",
                                     fmt_inr(mtm),
                                     delta_color="normal"
                                     if mtm_float >= 0
                                     else "inverse",
                                 )
                                 mc2.metric("Cost to Close", fmt_inr(cost_to_close))
+                                # Premium retention pct
+                                try:
+                                    _ret_pct = (1.0 - ctc_float / float(entry_credit_val)) * 100
+                                    mc4.metric("Premium Retained", f"{_ret_pct:.1f}%",
+                                               help="% of initial credit still retained. Close at 80%.")
+                                except Exception:
+                                    pass
 
                                 if entry_credit_val and strategy:
                                     try:
@@ -3719,3 +3855,203 @@ with tab_intel:
 
     except Exception as _ivh_err:
         st.warning(f"IV history chart error: {_ivh_err}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB: REPORTS
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_reports:
+    import io as _io
+    import pandas as _rpd
+
+    st.subheader("📊 Shift & Trade Reports")
+    st.caption("Download Excel reports covering all shifts, premiums collected, shift costs, and net P&L.")
+
+    _rp_db = get_db_path()
+    if not Path(_rp_db).exists():
+        st.info("No database found yet. Run paper entries first to generate trade data.")
+    else:
+        try:
+            from sqlalchemy import text as _rp_text
+            from storage.database import create_db_engine as _rp_engine_fn
+
+            _rp_engine = _rp_engine_fn(_rp_db)
+
+            with _rp_engine.connect() as _rp_conn:
+                # ── Strategies (trade summary) ─────────────────────────────────
+                _rp_strat = _rpd.read_sql(
+                    _rp_text(
+                        "SELECT id, underlying, expiry, lots, state, trading_mode, "
+                        "entry_credit, exit_debit, final_pnl, created_at, updated_at "
+                        "FROM strategies ORDER BY created_at DESC"
+                    ),
+                    _rp_conn,
+                )
+
+                # ── Shift events from alerts table ─────────────────────────────
+                _rp_shifts = _rpd.read_sql(
+                    _rp_text(
+                        "SELECT timestamp, strategy_id, event, message "
+                        "FROM alerts "
+                        "WHERE event IN ('SHIFT_TRIGGERED','SHIFT_COMPLETE','SHIFT_FAILED') "
+                        "ORDER BY timestamp DESC"
+                    ),
+                    _rp_conn,
+                )
+
+                # ── Orders for cost-of-shift detail ────────────────────────────
+                _rp_orders = _rpd.read_sql(
+                    _rp_text(
+                        "SELECT strategy_id, trading_symbol, side, quantity, "
+                        "limit_price, average_fill_price, status, submitted_at "
+                        "FROM orders ORDER BY submitted_at DESC"
+                    ),
+                    _rp_conn,
+                )
+
+            # ── Summary metrics ────────────────────────────────────────────────
+            if not _rp_strat.empty:
+                _rp_completed = _rp_strat[_rp_strat["final_pnl"].notna()]
+                _rp_total_pnl = float(_rp_completed["final_pnl"].sum()) if not _rp_completed.empty else 0.0
+                _rp_total_credit = float(_rp_strat["entry_credit"].fillna(0).sum())
+                _rp_shift_count = len(_rp_shifts)
+
+                _rp_m1, _rp_m2, _rp_m3, _rp_m4 = st.columns(4)
+                _rp_m1.metric("Total Trades", len(_rp_strat))
+                _rp_m2.metric("Total Shifts", _rp_shift_count)
+                _rp_m3.metric("Total Premium Collected", fmt_inr(_rp_total_credit))
+                _rp_m4.metric("Net Realised P&L", fmt_inr(_rp_total_pnl))
+
+                st.divider()
+
+            # ── Date range filter ──────────────────────────────────────────────
+            _rp_fc1, _rp_fc2, _rp_fc3 = st.columns(3)
+            _rp_date_from = _rp_fc1.date_input("From", value=None, key="rp_date_from")
+            _rp_date_to   = _rp_fc2.date_input("To",   value=None, key="rp_date_to")
+            _rp_mode_filter = _rp_fc3.selectbox("Mode", ["All", "paper", "live"], key="rp_mode")
+
+            # Apply filters
+            _rp_strat_f = _rp_strat.copy()
+            if "created_at" in _rp_strat_f.columns:
+                _rp_strat_f["created_at"] = _rpd.to_datetime(_rp_strat_f["created_at"])
+                if _rp_date_from:
+                    _rp_strat_f = _rp_strat_f[_rp_strat_f["created_at"].dt.date >= _rp_date_from]
+                if _rp_date_to:
+                    _rp_strat_f = _rp_strat_f[_rp_strat_f["created_at"].dt.date <= _rp_date_to]
+            if _rp_mode_filter != "All" and "trading_mode" in _rp_strat_f.columns:
+                _rp_strat_f = _rp_strat_f[_rp_strat_f["trading_mode"] == _rp_mode_filter]
+
+            # ── Trade summary table ────────────────────────────────────────────
+            st.subheader("Trade Summary")
+            if _rp_strat_f.empty:
+                st.info("No trades in selected range.")
+            else:
+                # Compute shift count per strategy
+                if not _rp_shifts.empty and "strategy_id" in _rp_shifts.columns:
+                    _rp_shift_per = _rp_shifts.groupby("strategy_id").size().reset_index(name="shifts")
+                    _rp_strat_f = _rp_strat_f.merge(_rp_shift_per, left_on="id", right_on="strategy_id", how="left")
+                    _rp_strat_f["shifts"] = _rp_strat_f["shifts"].fillna(0).astype(int)
+                else:
+                    _rp_strat_f["shifts"] = 0
+
+                # Numeric columns
+                for _col in ["entry_credit", "exit_debit", "final_pnl"]:
+                    if _col in _rp_strat_f.columns:
+                        _rp_strat_f[_col] = _rp_strat_f[_col].apply(lambda x: float(x) if x is not None else None)
+
+                _rp_display = _rp_strat_f[["underlying", "expiry", "lots", "state", "trading_mode",
+                                            "entry_credit", "exit_debit", "final_pnl", "shifts",
+                                            "created_at"]].copy()
+                _rp_display.columns = ["Symbol", "Expiry", "Lots", "State", "Mode",
+                                        "Entry Credit (pts)", "Exit Debit (pts)", "Net P&L (₹)",
+                                        "Shifts", "Entered At"]
+                st.dataframe(_rp_display, use_container_width=True, hide_index=True)
+
+            # ── Shift events table ─────────────────────────────────────────────
+            st.subheader("Shift Events")
+            if _rp_shifts.empty:
+                st.info("No shift events recorded yet.")
+            else:
+                _rp_shifts_d = _rp_shifts[["timestamp", "strategy_id", "event", "message"]].copy()
+                _rp_shifts_d.columns = ["Time", "Strategy ID", "Event", "Details"]
+                st.dataframe(_rp_shifts_d, use_container_width=True, hide_index=True)
+
+            # ── Excel download ─────────────────────────────────────────────────
+            st.divider()
+            st.subheader("Download Excel Report")
+
+            if st.button("📥 Generate Excel Report", type="primary", key="rp_generate"):
+                try:
+                    _rp_buf = _io.BytesIO()
+                    with _rpd.ExcelWriter(_rp_buf, engine="openpyxl") as _rp_writer:
+
+                        # Sheet 1: Trade Summary
+                        _rp_sheet1 = _rp_strat.copy()
+                        for _c in ["entry_credit", "exit_debit", "final_pnl"]:
+                            if _c in _rp_sheet1.columns:
+                                _rp_sheet1[_c] = _rp_sheet1[_c].apply(lambda x: float(x) if x is not None else None)
+                        _rp_sheet1.to_excel(_rp_writer, sheet_name="Trade Summary", index=False)
+
+                        # Sheet 2: Shift Events
+                        if not _rp_shifts.empty:
+                            _rp_shifts.to_excel(_rp_writer, sheet_name="Shift Events", index=False)
+
+                        # Sheet 3: Orders (shift costs & premiums)
+                        if not _rp_orders.empty:
+                            _rp_orders_s = _rp_orders.copy()
+                            for _c in ["limit_price", "average_fill_price"]:
+                                if _c in _rp_orders_s.columns:
+                                    _rp_orders_s[_c] = _rp_orders_s[_c].apply(
+                                        lambda x: float(x) if x is not None else None
+                                    )
+                            # Cost/premium per order = fill_price × quantity
+                            if "average_fill_price" in _rp_orders_s.columns and "quantity" in _rp_orders_s.columns:
+                                _rp_orders_s["order_value"] = (
+                                    _rp_orders_s["average_fill_price"].fillna(0) *
+                                    _rp_orders_s["quantity"].fillna(0)
+                                )
+                                # Net premium: SELL orders add, BUY orders subtract
+                                _rp_orders_s["net_premium_contribution"] = _rp_orders_s.apply(
+                                    lambda r: r["order_value"] if str(r.get("side", "")).upper() == "SELL"
+                                    else -r["order_value"],
+                                    axis=1,
+                                )
+                            _rp_orders_s.to_excel(_rp_writer, sheet_name="Orders Detail", index=False)
+
+                        # Sheet 4: Net Premium Summary per strategy
+                        if not _rp_orders.empty and "strategy_id" in _rp_orders.columns:
+                            _rp_net = _rp_orders.copy()
+                            for _c in ["limit_price", "average_fill_price"]:
+                                if _c in _rp_net.columns:
+                                    _rp_net[_c] = _rp_net[_c].apply(lambda x: float(x) if x is not None else None)
+                            if "average_fill_price" in _rp_net.columns and "quantity" in _rp_net.columns:
+                                _rp_net["order_value"] = (
+                                    _rp_net["average_fill_price"].fillna(0) * _rp_net["quantity"].fillna(0)
+                                )
+                                _rp_net["net_contribution"] = _rp_net.apply(
+                                    lambda r: r["order_value"] if str(r.get("side", "")).upper() == "SELL"
+                                    else -r["order_value"],
+                                    axis=1,
+                                )
+                                _rp_summary = _rp_net.groupby("strategy_id").agg(
+                                    total_premium_received=("net_contribution", lambda x: x[x > 0].sum()),
+                                    total_cost_paid=("net_contribution", lambda x: (-x[x < 0]).sum()),
+                                    net_premium=("net_contribution", "sum"),
+                                    total_orders=("strategy_id", "count"),
+                                ).reset_index()
+                                _rp_summary.to_excel(_rp_writer, sheet_name="Net Premium Summary", index=False)
+
+                    _rp_buf.seek(0)
+                    st.download_button(
+                        label="⬇️ Download Excel",
+                        data=_rp_buf,
+                        file_name=f"shift_report_{now_ist().strftime('%Y%m%d_%H%M')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="rp_download",
+                    )
+                    st.success("Report ready — click Download Excel above.")
+                except Exception as _rp_xe:
+                    st.error(f"Excel generation failed: {_rp_xe}")
+
+        except Exception as _rp_err:
+            st.error(f"Reports error: {_rp_err}")
