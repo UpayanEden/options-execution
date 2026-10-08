@@ -906,6 +906,160 @@ def create_app() -> Flask:
             return jsonify({"updated": True, "default_lots": lots})
         return jsonify({"error": "Failed to update config"}), 500
 
+    @app.route("/reports")
+    def reports_view():
+        """Render the reports page with shift history and premium summary."""
+        data = _load_reports_data()
+        return render_template(
+            "reports.html",
+            kill_switch_active=_KILL_SWITCH_FLAG.exists(),
+            now=datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
+            positions=data["positions"],
+            shift_events=data["shift_events"][:50],
+            premium_summary=data["premium_summary"],
+            total_shifts=data["total_shifts"],
+            total_positions=data["total_positions"],
+            total_net_premium=data["total_net_premium"],
+        )
+
+    @app.route("/api/reports/download")
+    def api_reports_download():
+        """Generate and return an Excel report with 4 sheets."""
+        import io
+        try:
+            import openpyxl
+            from openpyxl.styles import Alignment, Font, PatternFill
+            from openpyxl.utils import get_column_letter
+        except ImportError:
+            return jsonify({"error": "openpyxl not installed — run: pip install openpyxl"}), 500
+
+        from flask import send_file
+
+        data = _load_reports_data()
+        wb = openpyxl.Workbook()
+
+        header_fill = PatternFill(start_color="1a3a5c", end_color="1a3a5c", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+
+        def _style_sheet(ws):
+            for cell in ws[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center")
+            for col_idx, col in enumerate(ws.columns, 1):
+                max_len = max((len(str(cell.value or "")) for cell in col), default=0)
+                ws.column_dimensions[get_column_letter(col_idx)].width = min(max(max_len + 2, 12), 40)
+
+        # ── Sheet 1: Trade Summary ─────────────────────────────────────────
+        ws1 = wb.active
+        ws1.title = "Trade Summary"
+        ws1.append([
+            "Symbol", "Entry Date", "Expiry", "Lots", "Lot Size",
+            "Credit/Share", "Total Credit (INR)", "Short Put", "Short Call",
+            "State", "Final P&L (INR)", "Shift Count",
+        ])
+        shift_counts_map: Dict[str, int] = {}
+        for ev in data["shift_events"]:
+            sym = ev.get("symbol", "")
+            shift_counts_map[sym] = shift_counts_map.get(sym, 0) + 1
+
+        for pos in data["positions"]:
+            strikes = pos.get("strikes", {}) or {}
+            sym = pos.get("symbol", "")
+            entry_t = pos.get("entry_time", "") or ""
+            ws1.append([
+                sym,
+                entry_t[:10] if entry_t else "",
+                str(pos.get("expiry", "")),
+                int(pos.get("lots", 0) or 0),
+                int(pos.get("lot_size", 0) or 0),
+                round(float(pos.get("initial_credit", 0) or 0), 4),
+                round(
+                    float(pos.get("initial_credit", 0) or 0)
+                    * int(pos.get("lots", 1) or 1)
+                    * int(pos.get("lot_size", 1) or 1),
+                    2,
+                ),
+                float(strikes.get("short_put", 0) or 0),
+                float(strikes.get("short_call", 0) or 0),
+                pos.get("state", ""),
+                round(float(pos.get("final_pnl", pos.get("pnl", 0)) or 0), 2),
+                shift_counts_map.get(sym, 0),
+            ])
+        _style_sheet(ws1)
+
+        # ── Sheet 2: Shift Events ──────────────────────────────────────────
+        ws2 = wb.create_sheet("Shift Events")
+        ws2.append([
+            "Timestamp", "Symbol", "Direction", "Spot",
+            "Short Strike", "Breach Level", "% Away from Strike",
+        ])
+        for ev in data["shift_events"]:
+            direction = ev.get("direction", "")
+            short_strike = (
+                ev.get("short_put_strike") if direction == "PUT"
+                else ev.get("short_call_strike", "")
+            )
+            ws2.append([
+                ev.get("ts", ""),
+                ev.get("symbol", ""),
+                direction,
+                ev.get("spot", ""),
+                short_strike,
+                ev.get("breach_level", ""),
+                ev.get("pct_away_from_strike", ""),
+            ])
+        _style_sheet(ws2)
+
+        # ── Sheet 3: Orders Detail ─────────────────────────────────────────
+        ws3 = wb.create_sheet("Orders Detail")
+        ws3.append([
+            "Order ID", "Strategy ID", "Trading Symbol", "Side",
+            "Qty", "Limit Price", "Avg Fill Price", "Status",
+            "Submitted At", "Filled Qty",
+        ])
+        for order in _load_orders_from_db():
+            ws3.append([
+                order.get("order_id", ""),
+                order.get("strategy_id", ""),
+                order.get("trading_symbol", ""),
+                order.get("side", ""),
+                int(order.get("quantity", 0) or 0),
+                round(float(order.get("limit_price", 0) or 0), 4),
+                round(float(order.get("average_fill_price", 0) or 0), 4),
+                order.get("status", ""),
+                str(order.get("submitted_at", "")),
+                int(order.get("filled_quantity", 0) or 0),
+            ])
+        _style_sheet(ws3)
+
+        # ── Sheet 4: Net Premium Summary ───────────────────────────────────
+        ws4 = wb.create_sheet("Net Premium Summary")
+        ws4.append([
+            "Symbol", "Total Trades", "Gross Credit (INR)",
+            "Shift Count", "Net Premium (INR)",
+        ])
+        for row in data["premium_summary"]:
+            ws4.append([
+                row["symbol"],
+                row["trade_count"],
+                row["total_credit"],
+                row["shift_count"],
+                row["net_premium"],
+            ])
+        _style_sheet(ws4)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        filename = f"condor_report_{date.today().isoformat()}.xlsx"
+        return send_file(
+            buf,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=filename,
+        )
+
     return app
 
 
@@ -1477,6 +1631,81 @@ def _update_config_capital(new_capital: float) -> bool:
     except Exception as exc:
         logger.error("config_capital_update_failed", extra={"error": str(exc)})
         return False
+
+
+def _load_orders_from_db() -> List[Dict[str, Any]]:
+    """
+    Load orders from the live state database.
+
+    Returns:
+        List of order dicts, or empty list if the table does not exist.
+    """
+    conn = _db_connect()
+    if conn is None:
+        return []
+    try:
+        cur = conn.execute(
+            "SELECT * FROM orders ORDER BY submitted_at DESC LIMIT 500"
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return rows
+    except sqlite3.OperationalError:
+        conn.close()
+        return []
+
+
+def _load_reports_data() -> Dict[str, Any]:
+    """
+    Aggregate all data needed for the reports page and Excel download.
+
+    Returns:
+        Dict with keys: positions, shift_events, premium_summary,
+        total_shifts, total_positions, total_net_premium.
+    """
+    positions = _load_positions_from_db()
+    shift_events = _load_log_events(event_type="SHIFT_TRIGGERED", limit=2000)
+
+    # Per-symbol shift counts
+    shift_counts: Dict[str, int] = {}
+    for ev in shift_events:
+        sym = ev.get("symbol", "UNKNOWN")
+        shift_counts[sym] = shift_counts.get(sym, 0) + 1
+
+    # Net premium summary per symbol (aggregated across all trades)
+    seen: Dict[str, Dict[str, Any]] = {}
+    for pos in positions:
+        sym = pos.get("symbol", "UNKNOWN")
+        credit_per_share = float(pos.get("initial_credit", 0) or 0)
+        lots = int(pos.get("lots", 1) or 1)
+        lot_size = int(pos.get("lot_size", 1) or 1)
+        total_credit = round(credit_per_share * lots * lot_size, 2)
+        if sym not in seen:
+            seen[sym] = {"trade_count": 0, "total_credit": 0.0}
+        seen[sym]["trade_count"] += 1
+        seen[sym]["total_credit"] = round(seen[sym]["total_credit"] + total_credit, 2)
+
+    premium_summary = []
+    for sym, agg in sorted(seen.items()):
+        shifts = shift_counts.get(sym, 0)
+        premium_summary.append({
+            "symbol": sym,
+            "trade_count": agg["trade_count"],
+            "total_credit": agg["total_credit"],
+            "shift_count": shifts,
+            "net_premium": agg["total_credit"],  # gross = net (shift costs not tracked per-event)
+        })
+
+    total_net_premium = round(sum(r["net_premium"] for r in premium_summary), 2)
+
+    return {
+        "positions": positions,
+        "shift_events": shift_events,
+        "premium_summary": premium_summary,
+        "total_shifts": len(shift_events),
+        "total_positions": len(positions),
+        "total_net_premium": total_net_premium,
+    }
 
 
 app = create_app()

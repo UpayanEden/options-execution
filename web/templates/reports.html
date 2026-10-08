@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block title %}Reports — Iron Condor Live Trader{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h5 class="mb-0 fw-semibold">
+            <i class="bi bi-file-earmark-spreadsheet me-2 text-info"></i>Reports &amp; Downloads
+        </h5>
+        <small class="text-muted">Trade history, shift log, premium summary</small>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+        <small class="text-muted">{{ now }}</small>
+        <a href="/api/reports/download" class="btn btn-success btn-sm fw-semibold">
+            <i class="bi bi-download me-1"></i>Download Excel
+        </a>
+    </div>
+</div>
+
+<!-- ── Summary cards ──────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card h-100 text-center p-3">
+            <div class="stat-card-value text-info">{{ total_positions }}</div>
+            <div class="stat-card-label mt-1">Total Positions</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100 text-center p-3">
+            <div class="stat-card-value text-warning">{{ total_shifts }}</div>
+            <div class="stat-card-label mt-1">Total Shifts</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100 text-center p-3">
+            <div class="stat-card-value {% if total_net_premium >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
+                ₹{{ "{:,.0f}".format(total_net_premium) }}
+            </div>
+            <div class="stat-card-label mt-1">Gross Premium Collected</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100 text-center p-3">
+            <div class="stat-card-value text-light">{{ premium_summary | length }}</div>
+            <div class="stat-card-label mt-1">Unique Symbols</div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Net Premium Summary ─────────────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-bar-chart-fill me-2 text-info"></i>Net Premium Summary (per symbol)</span>
+        <small class="text-muted fw-normal">Gross credit collected across all trades</small>
+    </div>
+    <div class="card-body p-0">
+        {% if premium_summary %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th class="text-center">Trades</th>
+                        <th class="text-end">Gross Credit (₹)</th>
+                        <th class="text-center">Shifts</th>
+                        <th class="text-end">Net Premium (₹)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in premium_summary %}
+                <tr>
+                    <td class="fw-semibold">{{ row.symbol }}</td>
+                    <td class="text-center">{{ row.trade_count }}</td>
+                    <td class="text-end pnl-positive">₹{{ "{:,.2f}".format(row.total_credit) }}</td>
+                    <td class="text-center">
+                        {% if row.shift_count > 0 %}
+                        <span class="badge bg-warning text-dark">{{ row.shift_count }}</span>
+                        {% else %}
+                        <span class="text-muted">0</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end {% if row.net_premium >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
+                        ₹{{ "{:,.2f}".format(row.net_premium) }}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold" style="border-top: 2px solid var(--border-color);">
+                        <td>TOTAL</td>
+                        <td class="text-center">{{ positions | length }}</td>
+                        <td class="text-end pnl-positive">₹{{ "{:,.2f}".format(total_net_premium) }}</td>
+                        <td class="text-center">{{ total_shifts }}</td>
+                        <td class="text-end pnl-positive">₹{{ "{:,.2f}".format(total_net_premium) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-4">
+            <i class="bi bi-inbox display-5 d-block mb-2"></i>No trade data yet.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ── Trade Summary ─────────────────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-layers me-2 text-info"></i>Trade Summary (all positions)</span>
+        <small class="text-muted fw-normal">{{ positions | length }} records</small>
+    </div>
+    <div class="card-body p-0">
+        {% if positions %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" style="font-size:0.82rem;">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Entry Date</th>
+                        <th>Expiry</th>
+                        <th class="text-center">Lots</th>
+                        <th class="text-end">Credit/Share</th>
+                        <th class="text-end">Total Credit (₹)</th>
+                        <th class="text-center">Short Put</th>
+                        <th class="text-center">Short Call</th>
+                        <th class="text-center">State</th>
+                        <th class="text-end">Final P&L (₹)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for pos in positions %}
+                {% set strikes = pos.strikes if pos.strikes else {} %}
+                {% set entry_credit = (pos.initial_credit | float(0)) %}
+                {% set lots = (pos.lots | int(1)) %}
+                {% set lot_size = (pos.lot_size | int(1)) %}
+                {% set total_credit = entry_credit * lots * lot_size %}
+                <tr>
+                    <td class="fw-semibold">{{ pos.symbol }}</td>
+                    <td class="timestamp-cell">{{ (pos.entry_time or "")[:10] }}</td>
+                    <td class="timestamp-cell">{{ pos.expiry or "—" }}</td>
+                    <td class="text-center">{{ pos.lots or "—" }}</td>
+                    <td class="text-end">{{ "%.4f" | format(entry_credit) }}</td>
+                    <td class="text-end pnl-positive">₹{{ "{:,.2f}".format(total_credit) }}</td>
+                    <td class="text-center">
+                        <span class="strike-pill">{{ strikes.get("short_put", "—") if strikes else "—" }}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="strike-pill">{{ strikes.get("short_call", "—") if strikes else "—" }}</span>
+                    </td>
+                    <td class="text-center">
+                        {% set state = pos.state or "" %}
+                        {% if state == "OPEN" %}
+                        <span class="badge badge-open px-2">OPEN</span>
+                        {% elif state in ("CLOSED", "EXIT_COMPLETE") %}
+                        <span class="badge badge-closed px-2">{{ state }}</span>
+                        {% elif "SHIFT" in state %}
+                        <span class="badge badge-shifting px-2">{{ state }}</span>
+                        {% else %}
+                        <span class="badge bg-secondary px-2">{{ state or "—" }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% set pnl = (pos.final_pnl or pos.pnl or 0) | float %}
+                        <span class="{% if pnl > 0 %}pnl-positive{% elif pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+                            {% if pnl != 0 %}₹{{ "{:,.2f}".format(pnl) }}{% else %}—{% endif %}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-4">
+            <i class="bi bi-inbox display-5 d-block mb-2"></i>No positions found.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ── Shift Events Log ───────────────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-shuffle me-2 text-warning"></i>Shift Events (last 50)</span>
+        <small class="text-muted fw-normal">
+            {{ total_shifts }} total — download Excel for full history
+        </small>
+    </div>
+    <div class="card-body p-0">
+        {% if shift_events %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" style="font-size:0.82rem;">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Symbol</th>
+                        <th class="text-center">Direction</th>
+                        <th class="text-end">Spot</th>
+                        <th class="text-end">Short Strike</th>
+                        <th class="text-end">Breach Level</th>
+                        <th class="text-end">% Away</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for ev in shift_events %}
+                {% set direction = ev.get("direction", "") %}
+                {% set short_strike = ev.short_put_strike if direction == "PUT" else ev.get("short_call_strike", "—") %}
+                <tr class="log-row-WARNING">
+                    <td class="timestamp-cell">{{ (ev.ts or "")[:19] }}</td>
+                    <td class="fw-semibold">{{ ev.symbol or "—" }}</td>
+                    <td class="text-center">
+                        {% if direction == "PUT" %}
+                        <span class="badge" style="background:rgba(255,61,113,0.2);color:var(--accent-red);border:1px solid rgba(255,61,113,0.4);">
+                            <i class="bi bi-arrow-down-short"></i> PUT
+                        </span>
+                        {% elif direction == "CALL" %}
+                        <span class="badge" style="background:rgba(0,149,255,0.2);color:var(--accent-blue);border:1px solid rgba(0,149,255,0.4);">
+                            <i class="bi bi-arrow-up-short"></i> CALL
+                        </span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">{{ ev.spot or "—" }}</td>
+                    <td class="text-end">{{ short_strike or "—" }}</td>
+                    <td class="text-end text-warning">{{ ev.breach_level or "—" }}</td>
+                    <td class="text-end">
+                        {% if ev.pct_away_from_strike is not none %}
+                        {{ "%.2f"|format(ev.pct_away_from_strike | float) }}%
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-4">
+            <i class="bi bi-check-circle display-5 d-block mb-2 text-success"></i>
+            No shift events recorded yet.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
