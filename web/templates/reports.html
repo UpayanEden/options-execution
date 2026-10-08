@@ -131,26 +131,26 @@
                 </thead>
                 <tbody>
                 {% for pos in positions %}
-                {% set strikes = pos.strikes if pos.strikes else {} %}
-                {% set entry_credit = (pos.initial_credit | float(0)) %}
-                {% set lots = (pos.lots | int(1)) %}
-                {% set lot_size = (pos.lot_size | int(1)) %}
+                {% set strikes = pos.get("strikes") or {} %}
+                {% set entry_credit = pos.get("initial_credit", 0) | default(0) | float %}
+                {% set lots = pos.get("lots", 1) | default(1) | int %}
+                {% set lot_size = pos.get("lot_size", 1) | default(1) | int %}
                 {% set total_credit = entry_credit * lots * lot_size %}
+                {% set state = pos.get("state", "") %}
                 <tr>
-                    <td class="fw-semibold">{{ pos.symbol }}</td>
-                    <td class="timestamp-cell">{{ (pos.entry_time or "")[:10] }}</td>
-                    <td class="timestamp-cell">{{ pos.expiry or "—" }}</td>
-                    <td class="text-center">{{ pos.lots or "—" }}</td>
+                    <td class="fw-semibold">{{ pos.get("symbol", "—") }}</td>
+                    <td class="timestamp-cell">{{ (pos.get("entry_time") or "")[:10] }}</td>
+                    <td class="timestamp-cell">{{ pos.get("expiry", "—") or "—" }}</td>
+                    <td class="text-center">{{ pos.get("lots", "—") }}</td>
                     <td class="text-end">{{ "%.4f" | format(entry_credit) }}</td>
                     <td class="text-end pnl-positive">₹{{ "{:,.2f}".format(total_credit) }}</td>
                     <td class="text-center">
-                        <span class="strike-pill">{{ strikes.get("short_put", "—") if strikes else "—" }}</span>
+                        <span class="strike-pill">{{ strikes.get("short_put", "—") }}</span>
                     </td>
                     <td class="text-center">
-                        <span class="strike-pill">{{ strikes.get("short_call", "—") if strikes else "—" }}</span>
+                        <span class="strike-pill">{{ strikes.get("short_call", "—") }}</span>
                     </td>
                     <td class="text-center">
-                        {% set state = pos.state or "" %}
                         {% if state == "OPEN" %}
                         <span class="badge badge-open px-2">OPEN</span>
                         {% elif state in ("CLOSED", "EXIT_COMPLETE") %}
@@ -162,7 +162,7 @@
                         {% endif %}
                     </td>
                     <td class="text-end">
-                        {% set pnl = (pos.final_pnl or pos.pnl or 0) | float %}
+                        {% set pnl = (pos.get("final_pnl") or pos.get("pnl") or 0) | float %}
                         <span class="{% if pnl > 0 %}pnl-positive{% elif pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
                             {% if pnl != 0 %}₹{{ "{:,.2f}".format(pnl) }}{% else %}—{% endif %}
                         </span>
@@ -206,10 +206,11 @@
                 <tbody>
                 {% for ev in shift_events %}
                 {% set direction = ev.get("direction", "") %}
-                {% set short_strike = ev.short_put_strike if direction == "PUT" else ev.get("short_call_strike", "—") %}
+                {% set short_strike = ev.get("short_put_strike", "") if direction == "PUT" else ev.get("short_call_strike", "") %}
+                {% set pct_away = ev.get("pct_away_from_strike") %}
                 <tr class="log-row-WARNING">
-                    <td class="timestamp-cell">{{ (ev.ts or "")[:19] }}</td>
-                    <td class="fw-semibold">{{ ev.symbol or "—" }}</td>
+                    <td class="timestamp-cell">{{ ev.get("ts", "")[:19] }}</td>
+                    <td class="fw-semibold">{{ ev.get("symbol", "—") }}</td>
                     <td class="text-center">
                         {% if direction == "PUT" %}
                         <span class="badge" style="background:rgba(255,61,113,0.2);color:var(--accent-red);border:1px solid rgba(255,61,113,0.4);">
@@ -223,12 +224,12 @@
                         <span class="text-muted">—</span>
                         {% endif %}
                     </td>
-                    <td class="text-end">{{ ev.spot or "—" }}</td>
-                    <td class="text-end">{{ short_strike or "—" }}</td>
-                    <td class="text-end text-warning">{{ ev.breach_level or "—" }}</td>
+                    <td class="text-end">{{ ev.get("spot", "—") }}</td>
+                    <td class="text-end">{{ short_strike if short_strike else "—" }}</td>
+                    <td class="text-end text-warning">{{ ev.get("breach_level", "—") }}</td>
                     <td class="text-end">
-                        {% if ev.pct_away_from_strike is not none %}
-                        {{ "%.2f"|format(ev.pct_away_from_strike | float) }}%
+                        {% if pct_away is not none %}
+                        {{ "%.2f" | format(pct_away | float) }}%
                         {% else %}—{% endif %}
                     </td>
                 </tr>
