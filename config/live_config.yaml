@@ -263,4 +263,4 @@ stocks:
     premium_pct: 0.4
     lots: 1
     expiry_type: weekly
-    enabled: false             # Enable when ready to trade
+    enabled: true

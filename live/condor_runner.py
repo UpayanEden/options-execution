@@ -27,7 +27,7 @@ from brokers.base import BrokerAdapter, BrokerError, InstrumentNotFoundError, Qu
 from brokers.zerodha import ZerodhaBroker
 from execution.models import Order, OrderStatus, ResolvedInstrument, Side
 from live.capital_manager import CapitalManager
-from live.config import LiveConfig, StockConfig
+from live.config import LiveConfig, StockConfig, load_config as _load_live_config
 from live.guard_layers import GuardContext, GuardReport, run_all_guards
 from live.position_store import PositionStore
 from live.shift_monitor import ShiftMonitor
@@ -125,6 +125,7 @@ class CondorRunner:
         trade_logger: TradeLogger,
         capital_manager: Optional[CapitalManager] = None,
         kill_switch: Optional[KillSwitch] = None,
+        config_path: Optional[Any] = None,
     ) -> None:
         """
         Initialise the CondorRunner.
@@ -135,9 +136,13 @@ class CondorRunner:
             trade_logger:    TradeLogger for structured event logging.
             capital_manager: CapitalManager; created from config if not provided.
             kill_switch:     KillSwitch instance; new one created if not provided.
+            config_path:     Path to live_config.yaml; if provided, config is
+                             reloaded from disk at the start of each session so
+                             dashboard edits take effect without a full restart.
         """
         self._broker = broker
         self._config = config
+        self._config_path = config_path
         self._trade_logger = trade_logger
         self._capital_manager = capital_manager or CapitalManager(config.capital)
         self._kill_switch = kill_switch or KillSwitch()
@@ -160,6 +165,18 @@ class CondorRunner:
         5. Clean up: stop monitor, log summary.
         """
         logger.info("session_starting", extra={"session_id": self._session_id})
+
+        # ── Reload config from disk so dashboard edits take effect ────────────
+        if self._config_path is not None:
+            try:
+                fresh = _load_live_config(self._config_path)
+                # Preserve the mode that was set at startup (CLI flag may override yaml)
+                fresh.mode = self._config.mode
+                self._config = fresh
+                logger.info("config_reloaded", extra={"path": str(self._config_path),
+                                                       "enabled_stocks": len(fresh.enabled_stocks)})
+            except Exception as exc:
+                logger.warning("config_reload_failed", extra={"error": str(exc)})
 
         try:
             self._kill_switch.check()

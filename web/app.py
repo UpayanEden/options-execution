@@ -265,6 +265,27 @@ def create_app() -> Flask:
         positions = _load_positions_from_db()
         return jsonify({"positions": positions, "count": len(positions)})
 
+    @app.route("/api/dashboard/summary")
+    def api_dashboard_summary():
+        """Return all data needed to refresh the dashboard without a full page reload."""
+        positions = _load_positions_from_db()
+        cfg_raw = yaml.safe_load(_load_config_yaml()) or {}
+        pos_metrics = _compute_position_metrics(positions, cfg_raw)
+        # Embed metrics directly into each position dict for easy JS consumption
+        positions_with_metrics = []
+        for pos in positions:
+            sym = pos.get("symbol", "")
+            entry = dict(pos)
+            entry["metrics"] = pos_metrics.get(sym, {})
+            positions_with_metrics.append(entry)
+        return jsonify({
+            "open_count": sum(1 for p in positions if p.get("state") == "OPEN"),
+            "win_rate": _compute_win_rate(),
+            "shifts_today": _count_today_shifts(),
+            "now": datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
+            "positions": positions_with_metrics,
+        })
+
     @app.route("/api/pnl")
     def api_pnl():
         """Return today's P&L per symbol as JSON."""
@@ -1280,12 +1301,12 @@ def _compute_win_rate() -> float:
 
 def _count_today_shifts() -> int:
     """
-    Count the number of shift events logged today.
+    Count the number of successfully completed shifts today.
 
     Returns:
-        Integer count of SHIFT_TRIGGERED events today.
+        Integer count of SHIFT_COMPLETE events today.
     """
-    events = _load_log_events(event_type="SHIFT_TRIGGERED", limit=200)
+    events = _load_log_events(event_type="SHIFT_COMPLETE", limit=200)
     today = date.today().isoformat()
     return sum(1 for e in events if e.get("ts", "").startswith(today))
 

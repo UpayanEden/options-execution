@@ -229,7 +229,7 @@ def _start_web_server(port: int) -> threading.Thread:
 # ── Runner thread ──────────────────────────────────────────────────────────
 
 
-def _start_runner(broker, config, log_dir: str) -> threading.Thread:
+def _start_runner(broker, config, log_dir: str, config_path=None) -> threading.Thread:
     """
     Start the CondorRunner session in a background thread.
 
@@ -256,6 +256,7 @@ def _start_runner(broker, config, log_dir: str) -> threading.Thread:
         trade_logger=trade_logger,
         capital_manager=capital_manager,
         kill_switch=kill_switch,
+        config_path=config_path,
     )
 
     def _run():
@@ -363,7 +364,8 @@ def main() -> None:
             sys.exit(1)
 
         # ── Start trading runner ───────────────────────────────────────────
-        runner_thread = _start_runner(broker, config, log_dir)
+        _cfg_path = Path(args.config) if args.config else Path("config/live_config.yaml")
+        runner_thread = _start_runner(broker, config, log_dir, config_path=_cfg_path)
         threads.append(runner_thread)
         print(f"[run_live] CondorRunner started in {config.mode} mode.")
         print("[run_live] Press Ctrl+C to stop gracefully.")

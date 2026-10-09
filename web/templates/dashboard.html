@@ -2,9 +2,7 @@
 
 {% block title %}Dashboard — CondorLive{% endblock %}
 
-{% block extra_head %}
-<meta http-equiv="refresh" content="30">
-{% endblock %}
+{% block extra_head %}{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -13,9 +11,9 @@
     </h5>
     <div class="d-flex align-items-center gap-3">
         <span class="text-muted small">
-            <i class="bi bi-clock me-1"></i>{{ now }}
+            <i class="bi bi-clock me-1"></i><span id="dash-now">{{ now }}</span>
         </span>
-        <span class="badge bg-secondary small">
+        <span class="badge bg-secondary small" id="dash-refresh-badge">
             <i class="bi bi-arrow-repeat me-1"></i>Auto-refresh 30s
         </span>
     </div>
@@ -40,7 +38,7 @@
         <div class="card h-100">
             <div class="card-body text-center py-3">
                 <div class="stat-card-label mb-1">Open Positions</div>
-                <div class="stat-card-value text-info">{{ open_count }}</div>
+                <div class="stat-card-value text-info" id="stat-open-count">{{ open_count }}</div>
                 <div class="text-muted small mt-1">Active condors</div>
             </div>
         </div>
@@ -50,7 +48,7 @@
         <div class="card h-100">
             <div class="card-body text-center py-3">
                 <div class="stat-card-label mb-1">Win Rate</div>
-                <div class="stat-card-value {% if win_rate >= 60 %}pnl-positive{% elif win_rate >= 40 %}text-warning{% else %}pnl-negative{% endif %}">
+                <div class="stat-card-value {% if win_rate >= 60 %}pnl-positive{% elif win_rate >= 40 %}text-warning{% else %}pnl-negative{% endif %}" id="stat-win-rate">
                     {{ win_rate }}%
                 </div>
                 <div class="text-muted small mt-1">Closed trades today</div>
@@ -62,7 +60,7 @@
         <div class="card h-100">
             <div class="card-body text-center py-3">
                 <div class="stat-card-label mb-1">Shifts Today</div>
-                <div class="stat-card-value {% if shifts_today > 2 %}text-warning{% else %}text-light{% endif %}">
+                <div class="stat-card-value {% if shifts_today > 2 %}text-warning{% else %}text-light{% endif %}" id="stat-shifts-today">
                     {{ shifts_today }}
                 </div>
                 <div class="text-muted small mt-1">Condor adjustments</div>
@@ -133,9 +131,9 @@
             <i class="bi bi-arrow-right me-1"></i>Full Detail
         </a>
     </div>
-    <div class="card-body p-0">
+    <div class="card-body p-0" id="positions-card-body">
         {% if positions %}
-        <div class="table-responsive">
+        <div class="table-responsive" id="positions-table-wrap">
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
@@ -160,7 +158,7 @@
                         <th class="pe-3">Entry Time</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="positions-tbody">
                     {% for pos in positions %}
                     {% set sym = pos.get('symbol', '') %}
                     {% set m = pos_metrics.get(sym, {}) %}
@@ -245,7 +243,7 @@
             </table>
         </div>
         {% else %}
-        <div class="text-center text-muted py-5">
+        <div class="text-center text-muted py-5" id="positions-empty">
             <i class="bi bi-inbox display-4 d-block mb-3 opacity-25"></i>
             <p class="mb-0">No open positions found.</p>
             <small>Positions will appear here after the runner enters condors.</small>
@@ -437,8 +435,8 @@ async function refreshShiftCost() {
 refreshShiftCost();
 setInterval(refreshShiftCost, 60000);
 
-// Load recent events via API on page load
-(async function () {
+// ── Recent events polling ─────────────────────────────────────────────────
+async function refreshRecentEvents() {
     try {
         const resp = await fetch('/api/logs?n=10');
         const data = await resp.json();
@@ -456,7 +454,6 @@ setInterval(refreshShiftCost, 60000);
             const ts = (ev.ts || '').substring(11, 19);
             const eventType = ev.event_type || '';
             const sym = ev.symbol || '';
-            // Build a brief details string
             const skipKeys = new Set(['ts', 'level', 'logger', 'event_type', 'symbol']);
             const details = Object.entries(ev).filter(([k]) => !skipKeys.has(k))
                 .slice(0, 3).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(' | ');
@@ -473,6 +470,114 @@ setInterval(refreshShiftCost, 60000);
         document.getElementById('recent-events-container').innerHTML =
             `<div class="text-center text-danger py-3 small">Failed to load events: ${e.message}</div>`;
     }
-})();
+}
+
+// ── Dashboard summary polling (stats + positions table) ───────────────────
+function fmtInr(val, decimals=0) {
+    return val == null ? '—' : '₹' + parseFloat(val).toLocaleString('en-IN', {maximumFractionDigits: decimals});
+}
+
+function buildPositionRow(pos) {
+    const sym   = pos.symbol || '';
+    const m     = pos.metrics || {};
+    const state = pos.state || 'OPEN';
+    const strikes = pos.strikes || {};
+    const et    = (pos.entry_time || '').substring(0, 16);
+
+    const stateBadge = state === 'OPEN'
+        ? '<span class="badge badge-open">OPEN</span>'
+        : state === 'SHIFTING'
+        ? '<span class="badge badge-shifting">SHIFTING</span>'
+        : `<span class="badge badge-closed">${state}</span>`;
+
+    const netPremCls = (m.net_premium_pct >= 4) ? 'pnl-positive' : (m.net_premium_pct >= 2) ? 'text-warning' : 'text-light';
+    const maxProfitLoss = (m.max_profit != null && m.max_loss != null)
+        ? `<span class="pnl-positive small">+${fmtInr(m.max_profit)}</span><span class="text-muted small"> / </span><span class="pnl-negative small">-${fmtInr(m.max_loss)}</span>`
+        : '—';
+    const rrStrategy = m.rr_strategy != null
+        ? `<span class="text-light">${m.rr_strategy}x</span><div style="font-size:0.68rem;color:#9aa8bc;">risk per ₹ profit</div>`
+        : '—';
+    const rrWait = m.rr_wait != null
+        ? `<span class="text-info">${m.rr_wait}x</span><div style="font-size:0.68rem;color:#9aa8bc;">if wait ${Math.round((m.premium_pct_target||0)*100)}% decay</div>`
+        : '—';
+
+    return `<tr>
+        <td class="ps-3 fw-semibold">${sym || '—'}</td>
+        <td>${stateBadge}</td>
+        <td class="timestamp-cell">${pos.expiry || '—'}</td>
+        <td>${fmtInr(pos.spot_at_entry, 1)}</td>
+        <td id="spot-live-${sym}"><span class="text-muted small">—</span></td>
+        <td><span class="strike-pill text-danger">${strikes.short_put || pos.short_put_strike || '—'}</span></td>
+        <td><span class="strike-pill text-success">${strikes.short_call || pos.short_call_strike || '—'}</span></td>
+        <td>${pos.lots || '—'}</td>
+        <td class="pnl-positive">${fmtInr(pos.initial_credit, 2)}</td>
+        <td class="pnl-positive">${m.net_premium_total != null ? fmtInr(m.net_premium_total) : '—'}</td>
+        <td>${m.net_premium_pct != null ? `<span class="${netPremCls}">${m.net_premium_pct}%</span>` : '—'}</td>
+        <td id="curr-prem-${sym}"><span class="text-muted small">—</span></td>
+        <td>${maxProfitLoss}</td>
+        <td>${rrStrategy}</td>
+        <td>${rrWait}</td>
+        <td id="pnl-${sym}" data-symbol="${sym}"><span class="text-muted small">—</span></td>
+        <td id="shift-cost-${sym}"><span class="text-muted small">—</span></td>
+        <td>${pos.shift_count || 0}</td>
+        <td class="timestamp-cell pe-3">${et || '—'}</td>
+    </tr>`;
+}
+
+async function refreshDashboardSummary() {
+    try {
+        const resp = await fetch('/api/dashboard/summary', {cache: 'no-store'});
+        const data = await resp.json();
+
+        // Stat cards
+        const elCount = document.getElementById('stat-open-count');
+        if (elCount) elCount.textContent = data.open_count ?? '—';
+
+        const elWr = document.getElementById('stat-win-rate');
+        if (elWr) {
+            const wr = data.win_rate ?? 0;
+            elWr.textContent = wr + '%';
+            elWr.className = 'stat-card-value ' + (wr >= 60 ? 'pnl-positive' : wr >= 40 ? 'text-warning' : 'pnl-negative');
+        }
+
+        const elShifts = document.getElementById('stat-shifts-today');
+        if (elShifts) {
+            const sh = data.shifts_today ?? 0;
+            elShifts.textContent = sh;
+            elShifts.className = 'stat-card-value ' + (sh > 2 ? 'text-warning' : 'text-light');
+        }
+
+        const elNow = document.getElementById('dash-now');
+        if (elNow && data.now) elNow.textContent = data.now;
+
+        // Positions table
+        const tbody = document.getElementById('positions-tbody');
+        const emptyDiv = document.getElementById('positions-empty');
+        const tableWrap = document.getElementById('positions-table-wrap');
+        const positions = data.positions || [];
+        const open = positions.filter(p => p.state === 'OPEN' || p.state === 'SHIFTING');
+
+        if (open.length > 0) {
+            if (emptyDiv) emptyDiv.style.display = 'none';
+            if (tableWrap) tableWrap.style.display = '';
+            if (tbody) tbody.innerHTML = open.map(buildPositionRow).join('');
+            // Re-trigger live data for the newly rendered rows
+            refreshLivePnl();
+            refreshShiftCost();
+        } else {
+            if (tableWrap) tableWrap.style.display = 'none';
+            if (emptyDiv) emptyDiv.style.display = '';
+        }
+
+    } catch(e) {
+        console.error('refreshDashboardSummary failed:', e);
+    }
+}
+
+// Initial load + periodic refresh
+refreshRecentEvents();
+refreshDashboardSummary();
+setInterval(refreshRecentEvents, 30000);
+setInterval(refreshDashboardSummary, 30000);
 </script>
 {% endblock %}

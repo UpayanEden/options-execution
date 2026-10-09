@@ -326,7 +326,7 @@ class TradeLogger:
             trigger_pct:  Shift trigger threshold percentage.
         """
         self.log(
-            EventType.SHIFT_TRIGGERED,
+            EventType.SHIFT_COMPLETE,
             symbol,
             {
                 "old_strikes": old_strikes,
