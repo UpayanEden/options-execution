@@ -186,6 +186,23 @@ class ShiftMonitor:
                         If provided, skips per-symbol API call.
         """
         symbol = getattr(pos, "symbol", "UNKNOWN")
+
+        # ── F&O ban suspension check ───────────────────────────────────────
+        if getattr(pos, "fo_ban_suspended", False):
+            suspended_at = getattr(pos, "fo_ban_suspended_at", 0.0)
+            elapsed = time.time() - suspended_at
+            if elapsed < 3600:  # wait 1 hour before retrying
+                logger.debug(
+                    "shift_skipped_fo_ban_suspended",
+                    extra={"symbol": symbol, "retry_in_mins": round((3600 - elapsed) / 60, 1)},
+                )
+                return
+            # 1 hour has passed — clear suspension and let normal flow try again
+            pos.fo_ban_suspended = False
+            pos.fo_ban_failures = 0
+            pos.fo_ban_suspended_at = 0.0
+            logger.info("fo_ban_suspension_cleared_retrying", extra={"symbol": symbol})
+
         try:
             should_act, reason = self._check_position(pos, spot_cache=spot_cache)
             if not should_act:

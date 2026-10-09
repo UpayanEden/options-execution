@@ -104,6 +104,15 @@ class CondorPosition:
     state: str = "OPEN"
     """Position state: OPEN, SHIFTING, CLOSED."""
 
+    fo_ban_failures: int = 0
+    """Consecutive shift failures due to F&O ban period."""
+
+    fo_ban_suspended: bool = False
+    """True when shift retries are paused due to repeated F&O ban rejections."""
+
+    fo_ban_suspended_at: float = 0.0
+    """Unix timestamp when F&O ban suspension was last set."""
+
 
 # ── CondorRunner ───────────────────────────────────────────────────────────
 
@@ -150,6 +159,7 @@ class CondorRunner:
         self._shift_monitor: Optional[ShiftMonitor] = None
         self._position_store = PositionStore()
         self._session_id = str(uuid.uuid4())[:8]
+        self._last_order_error_msg: str = ""
         logger.info("condor_runner_init", extra={"session_id": self._session_id, "mode": config.mode})
 
     # ── Session entry point ────────────────────────────────────────────────
@@ -912,7 +922,31 @@ class CondorRunner:
         )
         if not self._place_order_safe(buy_new_hedge):
             logger.error("shift_entry_long_failed", extra={"symbol": symbol})
-            self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_new_hedge")
+            # Detect F&O ban period rejection and track consecutive failures
+            if "ban period" in self._last_order_error_msg.lower():
+                pos.fo_ban_failures += 1
+                if pos.fo_ban_failures >= 5:
+                    pos.fo_ban_suspended = True
+                    pos.fo_ban_suspended_at = time.time()
+                    logger.warning(
+                        "shift_fo_ban_suspended",
+                        extra={"symbol": symbol, "failures": pos.fo_ban_failures},
+                    )
+                    self._trade_logger.log(
+                        EventType.SHIFT_FAILED,
+                        symbol,
+                        {
+                            "trigger_side": trigger_side,
+                            "failed_step": "buy_new_hedge",
+                            "reason": "fo_ban_suspended_after_5_failures",
+                            "ban_error": self._last_order_error_msg,
+                        },
+                        level="WARNING",
+                    )
+                else:
+                    self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_new_hedge")
+            else:
+                self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_new_hedge")
             pos.state = "OPEN"
             return
         self._trade_logger.log_order(buy_new_hedge, EventType.ORDER_PLACED)
@@ -1299,6 +1333,7 @@ class CondorRunner:
                 )
             return str(broker_oid)
         except BrokerError as exc:
+            self._last_order_error_msg = str(exc)
             logger.error(
                 "order_placement_failed",
                 extra={"symbol": order.trading_symbol, "error": str(exc)},
