@@ -153,17 +153,15 @@ function startCountdown() {
 // ── Page auto-refresh ──────────────────────────────────────────────────────
 
 /**
- * Schedule a full page reload every REFRESH_INTERVAL_MS milliseconds.
- * Also triggers a lightweight data refresh via the API.
+ * Schedule a periodic data refresh via the API every REFRESH_INTERVAL_MS.
+ * No full page reload — only AJAX data updates.
  */
 function scheduleRefresh() {
-    if (refreshTimer) clearTimeout(refreshTimer);
+    if (refreshTimer) clearInterval(refreshTimer);
 
-    refreshTimer = setTimeout(() => {
-        // Lightweight API refresh first
+    refreshTimer = setInterval(() => {
         refreshPositions().catch(() => {});
-        // Then full page reload
-        window.location.reload();
+        startCountdown();
     }, REFRESH_INTERVAL_MS);
 }
 

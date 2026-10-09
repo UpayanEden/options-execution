@@ -13,61 +13,49 @@
 <!-- ── Summary cards ──────────────────────────────────────────────────── -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-md-2">
-        <div class="card text-center h-100 {% if counts.total > 0 %}border-danger{% endif %}">
+        <div class="card text-center h-100" id="ac-total-card">
             <div class="card-body py-3">
-                <div class="fs-3 fw-bold {% if counts.total > 0 %}text-danger{% else %}text-muted{% endif %}">
-                    {{ counts.total }}
-                </div>
+                <div class="fs-3 fw-bold" id="ac-total">{{ counts.total }}</div>
                 <div class="text-muted small">Total Alerts</div>
             </div>
         </div>
     </div>
     <div class="col-6 col-md-2">
-        <div class="card text-center h-100 {% if counts.SHIFT_FAILED > 0 %}border-warning{% endif %}">
+        <div class="card text-center h-100" id="ac-shift-card">
             <div class="card-body py-3">
-                <div class="fs-3 fw-bold {% if counts.SHIFT_FAILED > 0 %}text-warning{% else %}text-muted{% endif %}">
-                    {{ counts.SHIFT_FAILED }}
-                </div>
+                <div class="fs-3 fw-bold" id="ac-shift">{{ counts.SHIFT_FAILED }}</div>
                 <div class="text-muted small">Shift Failures</div>
             </div>
         </div>
     </div>
     <div class="col-6 col-md-2">
-        <div class="card text-center h-100 {% if counts.ORDER_REJECTED > 0 %}border-warning{% endif %}">
+        <div class="card text-center h-100" id="ac-rejected-card">
             <div class="card-body py-3">
-                <div class="fs-3 fw-bold {% if counts.ORDER_REJECTED > 0 %}text-warning{% else %}text-muted{% endif %}">
-                    {{ counts.ORDER_REJECTED }}
-                </div>
+                <div class="fs-3 fw-bold" id="ac-rejected">{{ counts.ORDER_REJECTED }}</div>
                 <div class="text-muted small">Rejected Orders</div>
             </div>
         </div>
     </div>
     <div class="col-6 col-md-2">
-        <div class="card text-center h-100 {% if counts.POSITION_MISMATCH > 0 %}border-danger{% endif %}">
+        <div class="card text-center h-100" id="ac-mismatch-card">
             <div class="card-body py-3">
-                <div class="fs-3 fw-bold {% if counts.POSITION_MISMATCH > 0 %}text-danger{% else %}text-muted{% endif %}">
-                    {{ counts.POSITION_MISMATCH }}
-                </div>
+                <div class="fs-3 fw-bold" id="ac-mismatch">{{ counts.POSITION_MISMATCH }}</div>
                 <div class="text-muted small">Pos. Mismatches</div>
             </div>
         </div>
     </div>
     <div class="col-6 col-md-2">
-        <div class="card text-center h-100 {% if (counts.CAPITAL_LIMIT_BREACHED + counts.DAILY_LOSS_LIMIT_BREACHED) > 0 %}border-danger{% endif %}">
+        <div class="card text-center h-100" id="ac-risk-card">
             <div class="card-body py-3">
-                <div class="fs-3 fw-bold {% if (counts.CAPITAL_LIMIT_BREACHED + counts.DAILY_LOSS_LIMIT_BREACHED) > 0 %}text-danger{% else %}text-muted{% endif %}">
-                    {{ counts.CAPITAL_LIMIT_BREACHED + counts.DAILY_LOSS_LIMIT_BREACHED }}
-                </div>
+                <div class="fs-3 fw-bold" id="ac-risk">{{ counts.CAPITAL_LIMIT_BREACHED + counts.DAILY_LOSS_LIMIT_BREACHED }}</div>
                 <div class="text-muted small">Risk Breaches</div>
             </div>
         </div>
     </div>
     <div class="col-6 col-md-2">
-        <div class="card text-center h-100 {% if (counts.ENTRY_FAILED + counts.EXIT_FAILED + counts.OTHER_ERROR) > 0 %}border-warning{% endif %}">
+        <div class="card text-center h-100" id="ac-other-card">
             <div class="card-body py-3">
-                <div class="fs-3 fw-bold {% if (counts.ENTRY_FAILED + counts.EXIT_FAILED + counts.OTHER_ERROR) > 0 %}text-warning{% else %}text-muted{% endif %}">
-                    {{ counts.ENTRY_FAILED + counts.EXIT_FAILED + counts.OTHER_ERROR }}
-                </div>
+                <div class="fs-3 fw-bold" id="ac-other">{{ counts.ENTRY_FAILED + counts.EXIT_FAILED + counts.OTHER_ERROR }}</div>
                 <div class="text-muted small">Other Errors</div>
             </div>
         </div>
@@ -75,6 +63,7 @@
 </div>
 
 <!-- ── Alert list ─────────────────────────────────────────────────────── -->
+<div id="alerts-list-container">
 {% if alerts %}
 <div class="card">
     <div class="card-body p-0">
@@ -175,6 +164,7 @@
     </div>
 </div>
 {% endif %}
+</div>{# end #alerts-list-container #}
 {% endblock %}
 
 {% block extra_js %}
@@ -186,19 +176,120 @@ function toggleAlertDetail(id) {
     }
 }
 
-// Auto-refresh every 30s
-(function scheduleRefresh() {
-    let secs = 30;
-    const el = document.getElementById('alert-refresh-ts');
-    const orig = el ? el.textContent : '';
-    setInterval(() => {
-        secs--;
-        if (secs <= 0) {
-            location.reload();
-        } else if (el) {
-            el.textContent = orig + ' (refresh in ' + secs + 's)';
-        }
-    }, 1000);
-})();
+function _severityBadge(level) {
+    if (level === 'CRITICAL') return `<span class="badge" style="background:#cc00cc">CRITICAL</span>`;
+    if (level === 'ERROR')    return `<span class="badge bg-danger">ERROR</span>`;
+    if (level === 'WARNING')  return `<span class="badge bg-warning text-dark">WARNING</span>`;
+    return `<span class="badge bg-secondary">${level}</span>`;
+}
+
+function _eventBadge(etype) {
+    if (etype === 'SHIFT_FAILED')
+        return `<span class="text-warning fw-semibold"><i class="bi bi-arrow-left-right me-1"></i>${etype}</span>`;
+    if (/BREACH|MISMATCH|KILL/.test(etype))
+        return `<span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill me-1"></i>${etype}</span>`;
+    if (/REJECTED|FAILED/.test(etype))
+        return `<span class="text-danger fw-semibold"><i class="bi bi-x-circle me-1"></i>${etype}</span>`;
+    return `<span class="text-warning">${etype}</span>`;
+}
+
+function _buildAlertRow(ev, idx) {
+    const level  = ev.level  || 'ERROR';
+    const etype  = ev.event_type || '';
+    const ts     = (ev.ts || '').substring(0, 19).replace('T', ' ');
+    const sym    = ev.symbol || '—';
+    const desc   = ev.alert_description || '';
+    const detId  = `alert-detail-ajax-${idx}`;
+
+    const skipKeys = new Set(['ts','level','logger','event_type','symbol','alert_description']);
+    let detailHtml = desc ? `<span class="text-light me-2">${desc}</span>` : '';
+    if (etype === 'SHIFT_FAILED') {
+        const side = ev.trigger_side || '';
+        const step = ev.failed_step  || '';
+        if (side) detailHtml += `<span class="badge bg-secondary me-1">${side}</span>`;
+        if (step) detailHtml += `<span class="text-muted">step: ${step}</span>`;
+    } else if (etype === 'ORDER_REJECTED') {
+        const err = ev.error || '';
+        if (err) detailHtml += `<span class="text-danger">${err.substring(0, 80)}</span>`;
+    } else {
+        const parts = Object.entries(ev)
+            .filter(([k]) => !skipKeys.has(k))
+            .slice(0, 3)
+            .map(([k, v]) => `${k}=${String(v).substring(0, 40)}`);
+        detailHtml += parts.join(' | ');
+    }
+
+    return `
+    <tr class="cursor-pointer" onclick="toggleAlertDetail('${detId}')" style="cursor:pointer;">
+        <td class="ps-3 text-muted">${ts}</td>
+        <td>${_severityBadge(level)}</td>
+        <td>${_eventBadge(etype)}</td>
+        <td class="fw-semibold">${sym}</td>
+        <td class="text-muted" style="max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${detailHtml}</td>
+    </tr>
+    <tr id="${detId}" style="display:none;">
+        <td colspan="5" class="p-0">
+            <pre class="json-raw m-2">${JSON.stringify(ev, null, 2)}</pre>
+        </td>
+    </tr>`;
+}
+
+function _updateCounts(counts) {
+    const upd = (id, val, dangerThreshold, cls) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = val;
+        el.className = `fs-3 fw-bold ${val > 0 ? cls : 'text-muted'}`;
+    };
+    upd('ac-total',    counts.total || 0, 0, 'text-danger');
+    upd('ac-shift',    counts.SHIFT_FAILED || 0, 0, 'text-warning');
+    upd('ac-rejected', counts.ORDER_REJECTED || 0, 0, 'text-warning');
+    upd('ac-mismatch', counts.POSITION_MISMATCH || 0, 0, 'text-danger');
+    upd('ac-risk',     (counts.CAPITAL_LIMIT_BREACHED || 0) + (counts.DAILY_LOSS_LIMIT_BREACHED || 0), 0, 'text-danger');
+    upd('ac-other',    (counts.ENTRY_FAILED || 0) + (counts.EXIT_FAILED || 0) + (counts.OTHER_ERROR || 0), 0, 'text-warning');
+}
+
+function _updateAlertList(alerts) {
+    const container = document.getElementById('alerts-list-container');
+    if (!container) return;
+
+    if (!alerts || alerts.length === 0) {
+        container.innerHTML = `<div class="card"><div class="card-body text-center py-5 text-muted">
+            <i class="bi bi-check-circle display-4 d-block mb-3 text-success opacity-50"></i>
+            <h5 class="text-success">No Active Alerts</h5>
+            <p class="mb-0">All systems operating normally.</p>
+        </div></div>`;
+        return;
+    }
+
+    let html = `<div class="card"><div class="card-body p-0"><div class="table-responsive">
+        <table class="table table-hover mb-0 small" id="alerts-table">
+        <thead><tr>
+            <th class="ps-3" style="width:115px">Time</th>
+            <th style="width:85px">Severity</th>
+            <th style="width:200px">Event</th>
+            <th style="width:130px">Symbol</th>
+            <th>Description / Details</th>
+        </tr></thead><tbody>`;
+    alerts.forEach((ev, i) => { html += _buildAlertRow(ev, i); });
+    html += '</tbody></table></div></div></div>';
+    container.innerHTML = html;
+}
+
+async function refreshAlertsData() {
+    try {
+        const resp = await fetch('/api/alerts', {cache: 'no-store'});
+        const data = await resp.json();
+        _updateCounts(data.counts || {});
+        _updateAlertList(data.alerts || []);
+        const el = document.getElementById('alert-refresh-ts');
+        if (el) el.textContent = new Date().toLocaleTimeString('en-IN', {timeZone:'Asia/Kolkata', hour12:false});
+    } catch(e) {
+        console.error('refreshAlertsData failed:', e);
+    }
+}
+
+// Refresh data every 30s without reloading the page
+setInterval(refreshAlertsData, 30000);
 </script>
 {% endblock %}
