@@ -1688,11 +1688,14 @@ def _load_reports_data() -> Dict[str, Any]:
         total_shifts, total_positions, total_net_premium.
     """
     positions = _load_positions_from_db()
+    # SHIFT_TRIGGERED includes both successful and failed shifts — use it only
+    # for the event table display. Count only SHIFT_COMPLETE for the summary.
     shift_events = _load_log_events(event_type="SHIFT_TRIGGERED", limit=2000)
+    successful_shifts = _load_log_events(event_type="SHIFT_COMPLETE", limit=2000)
 
-    # Per-symbol shift counts
+    # Per-symbol successful shift counts
     shift_counts: Dict[str, int] = {}
-    for ev in shift_events:
+    for ev in successful_shifts:
         sym = ev.get("symbol", "UNKNOWN")
         shift_counts[sym] = shift_counts.get(sym, 0) + 1
 
@@ -1726,7 +1729,7 @@ def _load_reports_data() -> Dict[str, Any]:
         "positions": positions,
         "shift_events": shift_events,
         "premium_summary": premium_summary,
-        "total_shifts": len(shift_events),
+        "total_shifts": len(successful_shifts),
         "total_positions": len(positions),
         "total_net_premium": total_net_premium,
     }
