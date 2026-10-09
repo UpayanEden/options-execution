@@ -1577,8 +1577,11 @@ def _get_read_broker():
     Only used for quote fetching — never places orders.
     Raises ValueError if credentials are missing.
     """
-    api_key = os.environ.get("ZERODHA_API_KEY", "") or _load_credentials().get("ZERODHA_API_KEY", "")
-    access_token = os.environ.get("ZERODHA_ACCESS_TOKEN", "") or _load_credentials().get("ZERODHA_ACCESS_TOKEN", "")
+    # Always read credentials.env first so a token refresh is picked up by all
+    # gunicorn workers immediately (os.environ is per-process and may be stale).
+    creds = _load_credentials()
+    api_key = creds.get("ZERODHA_API_KEY", "") or os.environ.get("ZERODHA_API_KEY", "")
+    access_token = creds.get("ZERODHA_ACCESS_TOKEN", "") or os.environ.get("ZERODHA_ACCESS_TOKEN", "")
     if not api_key or not access_token:
         raise ValueError("ZERODHA_API_KEY or ZERODHA_ACCESS_TOKEN not set")
     from brokers.zerodha import ZerodhaBroker
