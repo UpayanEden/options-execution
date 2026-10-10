@@ -893,6 +893,26 @@ class CondorRunner:
         new_short_price = _mid(q_ns)
         new_long_price  = _mid(q_nl)
 
+        # Zero price means the option has no market (common during F&O ban) — abort
+        if new_long_price == 0:
+            logger.warning("shift_zero_price_new_hedge", extra={"symbol": symbol,
+                           "leg": new_long_inst.trading_symbol})
+            pos.fo_ban_failures += 1
+            if pos.fo_ban_failures >= 5:
+                pos.fo_ban_suspended = True
+                pos.fo_ban_suspended_at = time.time()
+                self._trade_logger.log(
+                    EventType.SHIFT_FAILED, symbol,
+                    {"trigger_side": trigger_side, "failed_step": "buy_new_hedge",
+                     "reason": "fo_ban_suspended_after_5_failures",
+                     "ban_error": "zero_quote_on_new_hedge"},
+                    level="WARNING",
+                )
+            else:
+                self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_new_hedge_zero_price")
+            pos.state = "OPEN"
+            return
+
         # Fetch close quotes for old legs
         try:
             close_quotes = self._broker.get_quotes([
