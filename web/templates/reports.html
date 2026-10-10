@@ -64,6 +64,7 @@
                         <th class="text-center">Trades</th>
                         <th class="text-end">Gross Credit (₹)</th>
                         <th class="text-center">Shifts</th>
+                        <th class="text-end">Shift P&amp;L (₹)</th>
                         <th class="text-end">Net Premium (₹)</th>
                     </tr>
                 </thead>
@@ -80,6 +81,9 @@
                         <span class="text-muted">0</span>
                         {% endif %}
                     </td>
+                    <td class="text-end {% if row.shift_pnl >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
+                        ₹{{ "{:,.2f}".format(row.shift_pnl) }}
+                    </td>
                     <td class="text-end {% if row.net_premium >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
                         ₹{{ "{:,.2f}".format(row.net_premium) }}
                     </td>
@@ -90,9 +94,10 @@
                     <tr class="fw-bold" style="border-top: 2px solid var(--border-color);">
                         <td>TOTAL</td>
                         <td class="text-center">{{ positions | length }}</td>
-                        <td class="text-end pnl-positive">₹{{ "{:,.2f}".format(total_net_premium) }}</td>
+                        <td class="text-end pnl-positive">₹{{ "{:,.2f}".format(premium_summary | sum(attribute='total_credit')) }}</td>
                         <td class="text-center">{{ total_shifts }}</td>
-                        <td class="text-end pnl-positive">₹{{ "{:,.2f}".format(total_net_premium) }}</td>
+                        <td class="text-end {% if (premium_summary | sum(attribute='shift_pnl')) >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">₹{{ "{:,.2f}".format(premium_summary | sum(attribute='shift_pnl')) }}</td>
+                        <td class="text-end {% if total_net_premium >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">₹{{ "{:,.2f}".format(total_net_premium) }}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -183,7 +188,7 @@
 <!-- ── Shift Events Log ───────────────────────────────────────────────────── -->
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-shuffle me-2 text-warning"></i>Shift Events (last 50)</span>
+        <span><i class="bi bi-shuffle me-2 text-warning"></i>Shift Events — Pricing Breakdown</span>
         <small class="text-muted fw-normal">
             {{ total_shifts }} total — download Excel for full history
         </small>
@@ -196,19 +201,24 @@
                     <tr>
                         <th>Timestamp</th>
                         <th>Symbol</th>
-                        <th class="text-center">Direction</th>
+                        <th class="text-center">Side</th>
                         <th class="text-end">Spot</th>
-                        <th class="text-end">Short Strike</th>
-                        <th class="text-end">Breach Level</th>
-                        <th class="text-end">% Away</th>
+                        <th class="text-end">Close Short</th>
+                        <th class="text-end">Close Long</th>
+                        <th class="text-end">Close Debit</th>
+                        <th class="text-end">New Short</th>
+                        <th class="text-end">New Long</th>
+                        <th class="text-end">New Credit</th>
+                        <th class="text-end">Shift P&amp;L (₹)</th>
                     </tr>
                 </thead>
                 <tbody>
                 {% for ev in shift_events %}
-                {% set direction = ev.get("direction", "") %}
-                {% set short_strike = ev.get("short_put_strike", "") if direction == "PUT" else ev.get("short_call_strike", "") %}
-                {% set pct_away = ev.get("pct_away_from_strike") %}
-                <tr class="log-row-WARNING">
+                {% set direction = ev.get("trigger_side", ev.get("direction", "")) %}
+                {% set close_debit = ev.get("close_debit", 0) | float %}
+                {% set new_credit = ev.get("new_credit", 0) | float %}
+                {% set shift_pnl = ev.get("shift_pnl_total", 0) | float %}
+                <tr>
                     <td class="timestamp-cell">{{ ev.get("ts", "")[:19] }}</td>
                     <td class="fw-semibold">{{ ev.get("symbol", "—") }}</td>
                     <td class="text-center">
@@ -225,11 +235,15 @@
                         {% endif %}
                     </td>
                     <td class="text-end">{{ ev.get("spot", "—") }}</td>
-                    <td class="text-end">{{ short_strike if short_strike else "—" }}</td>
-                    <td class="text-end text-warning">{{ ev.get("breach_level", "—") }}</td>
-                    <td class="text-end">
-                        {% if pct_away is not none %}
-                        {{ "%.2f" | format(pct_away | float) }}%
+                    <td class="text-end text-danger">{{ "%.4f" | format(ev.get("close_short_price", 0) | float) if ev.get("close_short_price") else "—" }}</td>
+                    <td class="text-end pnl-positive">{{ "%.4f" | format(ev.get("close_long_price", 0) | float) if ev.get("close_long_price") else "—" }}</td>
+                    <td class="text-end text-danger">{{ "%.4f" | format(close_debit) if ev.get("close_debit") else "—" }}</td>
+                    <td class="text-end pnl-positive">{{ "%.4f" | format(ev.get("new_short_price", 0) | float) if ev.get("new_short_price") else "—" }}</td>
+                    <td class="text-end text-danger">{{ "%.4f" | format(ev.get("new_long_price", 0) | float) if ev.get("new_long_price") else "—" }}</td>
+                    <td class="text-end pnl-positive">{{ "%.4f" | format(new_credit) if ev.get("new_credit") else "—" }}</td>
+                    <td class="text-end fw-semibold {% if shift_pnl >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
+                        {% if ev.get("shift_pnl_total") is not none and ev.get("shift_pnl_total") != 0 %}
+                        ₹{{ "{:,.2f}".format(shift_pnl) }}
                         {% else %}—{% endif %}
                     </td>
                 </tr>

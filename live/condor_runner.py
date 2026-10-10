@@ -1034,12 +1034,26 @@ class CondorRunner:
             "short_call": float(pos.short_call.strike),
             "long_call":  float(pos.long_call.strike),
         }
+        shift_cost_per_share = round(close_debit - new_side_credit, 4)
+        shift_pnl_total = round((new_side_credit - close_debit) * pos.lots * pos.lot_size, 2)
         self._trade_logger.log_shift(
             symbol=symbol,
+            trigger_side=trigger_side,
             old_strikes=old_strikes,
             new_strikes=new_strikes,
             spot=spot,
             trigger_pct=self._config.strategy.shift_trigger_pct,
+            close_short_price=float(close_short_price),
+            close_long_price=float(close_long_price),
+            close_debit=round(close_debit, 4),
+            new_short_price=float(new_short_price),
+            new_long_price=float(new_long_price),
+            new_credit=round(new_side_credit, 4),
+            shift_cost_per_share=shift_cost_per_share,
+            shift_pnl_total=shift_pnl_total,
+            running_credit=round(pos.initial_credit, 4),
+            lots=pos.lots,
+            lot_size=pos.lot_size,
         )
         logger.info(
             "shift_complete",

@@ -310,29 +310,65 @@ class TradeLogger:
     def log_shift(
         self,
         symbol: str,
+        trigger_side: str,
         old_strikes: Dict[str, float],
         new_strikes: Dict[str, float],
         spot: float,
         trigger_pct: float,
+        close_short_price: float = 0.0,
+        close_long_price: float = 0.0,
+        close_debit: float = 0.0,
+        new_short_price: float = 0.0,
+        new_long_price: float = 0.0,
+        new_credit: float = 0.0,
+        shift_cost_per_share: float = 0.0,
+        shift_pnl_total: float = 0.0,
+        running_credit: float = 0.0,
+        lots: int = 0,
+        lot_size: int = 0,
     ) -> None:
         """
-        Log a condor shift event.
+        Log a condor shift event with full pricing breakdown.
 
         Args:
-            symbol:       Underlying symbol.
-            old_strikes:  Previous condor strikes.
-            new_strikes:  New condor strikes after shift.
-            spot:         Current spot price that triggered the shift.
-            trigger_pct:  Shift trigger threshold percentage.
+            symbol:             Underlying symbol.
+            trigger_side:       "PUT" or "CALL".
+            old_strikes:        Previous condor strikes.
+            new_strikes:        New condor strikes after shift.
+            spot:               Current spot price that triggered the shift.
+            trigger_pct:        Shift trigger threshold percentage.
+            close_short_price:  Price paid to buy back old short leg.
+            close_long_price:   Price received selling old long hedge.
+            close_debit:        Net debit to close old spread (close_short - close_long).
+            new_short_price:    Premium received for new short leg.
+            new_long_price:     Premium paid for new hedge leg.
+            new_credit:         Net credit from new spread (new_short - new_long).
+            shift_cost_per_share: Net cost of shift per share (close_debit - new_credit).
+            shift_pnl_total:    Total P&L impact of shift in rupees (new_credit - close_debit) * lots * lot_size.
+            running_credit:     Updated cumulative credit for the position after this shift.
+            lots:               Number of lots.
+            lot_size:           Lot size.
         """
         self.log(
             EventType.SHIFT_COMPLETE,
             symbol,
             {
+                "trigger_side": trigger_side,
                 "old_strikes": old_strikes,
                 "new_strikes": new_strikes,
                 "spot": round(spot, 2),
                 "trigger_pct": trigger_pct,
+                "close_short_price": round(close_short_price, 4),
+                "close_long_price": round(close_long_price, 4),
+                "close_debit": round(close_debit, 4),
+                "new_short_price": round(new_short_price, 4),
+                "new_long_price": round(new_long_price, 4),
+                "new_credit": round(new_credit, 4),
+                "shift_cost_per_share": round(shift_cost_per_share, 4),
+                "shift_pnl_total": round(shift_pnl_total, 2),
+                "running_credit": round(running_credit, 4),
+                "lots": lots,
+                "lot_size": lot_size,
             },
             level="WARNING",
         )

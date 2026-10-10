@@ -1688,18 +1688,20 @@ def _load_reports_data() -> Dict[str, Any]:
         total_shifts, total_positions, total_net_premium.
     """
     positions = _load_positions_from_db()
-    # SHIFT_TRIGGERED includes both successful and failed shifts — use it only
-    # for the event table display. Count only SHIFT_COMPLETE for the summary.
-    shift_events = _load_log_events(event_type="SHIFT_TRIGGERED", limit=2000)
-    successful_shifts = _load_log_events(event_type="SHIFT_COMPLETE", limit=2000)
+    shift_events = _load_log_events(event_type="SHIFT_COMPLETE", limit=2000)
 
-    # Per-symbol successful shift counts
+    # Per-symbol: shift count and cumulative shift P&L from pricing data
     shift_counts: Dict[str, int] = {}
-    for ev in successful_shifts:
+    shift_pnl_by_sym: Dict[str, float] = {}
+    for ev in shift_events:
         sym = ev.get("symbol", "UNKNOWN")
         shift_counts[sym] = shift_counts.get(sym, 0) + 1
+        shift_pnl_by_sym[sym] = round(
+            shift_pnl_by_sym.get(sym, 0.0) + float(ev.get("shift_pnl_total", 0) or 0),
+            2,
+        )
 
-    # Net premium summary per symbol (aggregated across all trades)
+    # Net premium summary per symbol
     seen: Dict[str, Dict[str, Any]] = {}
     for pos in positions:
         sym = pos.get("symbol", "UNKNOWN")
@@ -1715,12 +1717,16 @@ def _load_reports_data() -> Dict[str, Any]:
     premium_summary = []
     for sym, agg in sorted(seen.items()):
         shifts = shift_counts.get(sym, 0)
+        shift_pnl = shift_pnl_by_sym.get(sym, 0.0)
+        gross_credit = agg["total_credit"]
+        net_premium = round(gross_credit + shift_pnl, 2)
         premium_summary.append({
             "symbol": sym,
             "trade_count": agg["trade_count"],
-            "total_credit": agg["total_credit"],
+            "total_credit": gross_credit,
             "shift_count": shifts,
-            "net_premium": agg["total_credit"],  # gross = net (shift costs not tracked per-event)
+            "shift_pnl": shift_pnl,
+            "net_premium": net_premium,
         })
 
     total_net_premium = round(sum(r["net_premium"] for r in premium_summary), 2)
@@ -1729,7 +1735,7 @@ def _load_reports_data() -> Dict[str, Any]:
         "positions": positions,
         "shift_events": shift_events,
         "premium_summary": premium_summary,
-        "total_shifts": len(successful_shifts),
+        "total_shifts": len(shift_events),
         "total_positions": len(positions),
         "total_net_premium": total_net_premium,
     }
