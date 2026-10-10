@@ -300,20 +300,141 @@ function _buildStockCards(alerts) {
     return html;
 }
 
+// Track alerts already rendered so we never duplicate or disrupt scroll
+const _seenAlerts = new Set();
+
+function _alertKey(ev) {
+    return (ev.ts || '') + '|' + (ev.event_type || '') + '|' + (ev.symbol || '');
+}
+
+// Seed seen-set from whatever was server-rendered on first load
+function _seedSeenAlerts() {
+    document.querySelectorAll('#alerts-list-container pre.json-raw').forEach(pre => {
+        try {
+            const ev = JSON.parse(pre.textContent);
+            _seenAlerts.add(_alertKey(ev));
+        } catch(_) {}
+    });
+}
+
+function _buildAlertRow(ev, idx, sym) {
+    const level = ev.level || 'ERROR';
+    const etype = ev.event_type || '';
+    const ts = (ev.ts || '').substring(0, 19).replace('T', ' ');
+    const desc = ev.alert_description || '';
+    const detId = `alert-detail-ajax-${sym.replace(/\s+/g,'_')}-${idx}-${Date.now()}`;
+    const skipKeys = new Set(['ts','level','logger','event_type','symbol','alert_description']);
+    let detailHtml = desc ? `<span class="text-light me-2">${desc}</span>` : '';
+    if (etype === 'SHIFT_FAILED') {
+        const side = ev.trigger_side || ''; const step = ev.failed_step || '';
+        if (side) detailHtml += `<span class="badge bg-secondary me-1">${side}</span>`;
+        if (step) detailHtml += `<span class="text-muted">step: ${step}</span>`;
+    } else if (etype === 'ORDER_REJECTED') {
+        const err = ev.error || '';
+        if (err) detailHtml += `<span class="text-danger">${err.substring(0, 80)}</span>`;
+    } else {
+        const parts = Object.entries(ev).filter(([k]) => !skipKeys.has(k)).slice(0, 3)
+            .map(([k, v]) => `${k}=${String(v).substring(0, 40)}`);
+        detailHtml += parts.join(' | ');
+    }
+    return `<tr style="cursor:pointer;" onclick="toggleAlertDetail('${detId}')">
+        <td class="ps-3 text-muted">${ts}</td>
+        <td>${_severityBadge(level)}</td>
+        <td>${_eventBadge(etype)}</td>
+        <td class="text-muted" style="max-width:480px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${detailHtml}</td>
+    </tr>
+    <tr id="${detId}" style="display:none;">
+        <td colspan="4" class="p-0"><pre class="json-raw m-2">${JSON.stringify(ev, null, 2)}</pre></td>
+    </tr>`;
+}
+
+function _patchAlerts(alerts) {
+    const container = document.getElementById('alerts-list-container');
+    if (!container) return;
+
+    // If currently showing empty state, replace with full build on first data arrival
+    if (alerts.length > 0 && container.querySelector('.text-success')) {
+        container.innerHTML = _buildStockCards(alerts);
+        alerts.forEach(ev => _seenAlerts.add(_alertKey(ev)));
+        return;
+    }
+
+    // Group incoming alerts by symbol
+    const groups = {};
+    for (const ev of alerts) {
+        const sym = ev.symbol || 'SYSTEM';
+        if (!groups[sym]) groups[sym] = [];
+        groups[sym].push(ev);
+    }
+
+    for (const sym of Object.keys(groups)) {
+        const cardId = `stock-ajax-${sym.replace(/\s+/g, '_')}`;
+        const newEvs = groups[sym]
+            .filter(ev => !_seenAlerts.has(_alertKey(ev)))
+            .sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+
+        if (newEvs.length === 0) continue; // nothing new for this stock
+
+        let tbody = document.querySelector(`#${cardId} tbody`);
+
+        if (!tbody) {
+            // New stock card — create it and append (no scroll disruption since it's at bottom/current position)
+            const div = document.createElement('div');
+            div.innerHTML = _buildStockCards(groups[sym]);
+            // Only take the first card element
+            const card = div.querySelector('.card');
+            if (card) container.appendChild(card);
+            groups[sym].forEach(ev => _seenAlerts.add(_alertKey(ev)));
+            continue;
+        }
+
+        // Card exists — prepend new rows to tbody
+        const frag = document.createDocumentFragment();
+        newEvs.forEach((ev, i) => {
+            const tmp = document.createElement('tbody');
+            tmp.innerHTML = _buildAlertRow(ev, i, sym);
+            while (tmp.firstChild) frag.appendChild(tmp.firstChild);
+        });
+        tbody.insertBefore(frag, tbody.firstChild);
+
+        // Update card header: count + latest ts
+        const card = tbody.closest('.card');
+        if (card) {
+            const countBadge = card.querySelector('.card-header .badge.bg-secondary');
+            if (countBadge) {
+                const total = tbody.querySelectorAll('tr[onclick]').length;
+                countBadge.textContent = `${total} alert${total !== 1 ? 's' : ''}`;
+            }
+            const latestSpan = card.querySelector('.card-header .text-muted.small');
+            if (latestSpan && newEvs[0]) {
+                const ts = (newEvs[0].ts || '').substring(0, 19).replace('T', ' ');
+                latestSpan.textContent = `Latest: ${ts}`;
+            }
+        }
+
+        newEvs.forEach(ev => _seenAlerts.add(_alertKey(ev)));
+    }
+}
+
 async function refreshAlertsData() {
     try {
         const resp = await fetch('/api/alerts', {cache: 'no-store'});
         const data = await resp.json();
         _updateCounts(data.counts || {});
-        const container = document.getElementById('alerts-list-container');
-        if (container) container.innerHTML = _buildStockCards(data.alerts || []);
+        _patchAlerts(data.alerts || []);
         const el = document.getElementById('alert-refresh-ts');
         if (el) el.textContent = new Date().toLocaleTimeString('en-IN', {timeZone:'Asia/Kolkata', hour12:false});
     } catch(e) {
-        console.error('refreshAlertsData failed:', e);
+        // Silent failure — don't disturb the page
     }
 }
 
+// Seed on DOM ready, then poll
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _seedSeenAlerts);
+} else {
+    _seedSeenAlerts();
+}
 setInterval(refreshAlertsData, 30000);
 </script>
 {% endblock %}
