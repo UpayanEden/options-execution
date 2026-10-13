@@ -93,14 +93,28 @@ def create_app() -> Flask:
         capital_info = cfg_raw.get("capital", {})
         strategy_info = cfg_raw.get("strategy", {})
         pos_metrics = _compute_position_metrics(positions, cfg_raw)
+        shift_stats = _get_shift_stats_by_symbol()
+        open_positions = [p for p in positions if p.get("state") in ("OPEN", "SHIFTING")]
+        total_cash_margin = round(sum(
+            pos_metrics.get(p.get("symbol", ""), {}).get("cash_margin", 0)
+            for p in open_positions
+        ), 2)
+        total_net_premium = round(sum(
+            pos_metrics.get(p.get("symbol", ""), {}).get("net_premium_total", 0)
+            + shift_stats.get(p.get("symbol", ""), {}).get("shift_pnl", 0.0)
+            for p in open_positions
+        ), 2)
         return render_template(
             "dashboard.html",
             positions=positions,
             pos_metrics=pos_metrics,
+            shift_stats=shift_stats,
             total_pnl=pnl_summary.get("total_pnl", 0.0),
             open_count=sum(1 for p in positions if p.get("state") == "OPEN"),
             win_rate=win_rate,
             shifts_today=shifts_today,
+            total_cash_margin=total_cash_margin,
+            total_net_premium=total_net_premium,
             kill_switch_active=_KILL_SWITCH_FLAG.exists(),
             now=datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
             capital_info=capital_info,
@@ -271,12 +285,18 @@ def create_app() -> Flask:
         positions = _load_positions_from_db()
         cfg_raw = yaml.safe_load(_load_config_yaml()) or {}
         pos_metrics = _compute_position_metrics(positions, cfg_raw)
-        # Embed metrics directly into each position dict for easy JS consumption
+        shift_stats = _get_shift_stats_by_symbol()
         positions_with_metrics = []
         for pos in positions:
             sym = pos.get("symbol", "")
             entry = dict(pos)
             entry["metrics"] = pos_metrics.get(sym, {})
+            ss = shift_stats.get(sym, {})
+            entry["total_shifts"] = ss.get("total_shifts", pos.get("shift_count", 0))
+            entry["net_premium_with_shifts"] = round(
+                pos_metrics.get(sym, {}).get("net_premium_total", 0)
+                + ss.get("shift_pnl", 0.0), 2
+            )
             positions_with_metrics.append(entry)
         return jsonify({
             "open_count": sum(1 for p in positions if p.get("state") == "OPEN"),
@@ -1105,6 +1125,21 @@ def _db_connect() -> Optional[sqlite3.Connection]:
 
 
 _JSON_COLUMNS = {"strikes", "short_put", "long_put", "short_call", "long_call", "broker_order_ids"}
+
+
+def _get_shift_stats_by_symbol() -> Dict[str, Dict]:
+    """All-time per-symbol shift count and cumulative shift P&L from JSONL logs."""
+    events = _load_log_events(event_type="SHIFT_COMPLETE", limit=2000)
+    stats: Dict[str, Dict] = {}
+    for ev in events:
+        sym = ev.get("symbol", "UNKNOWN")
+        if sym not in stats:
+            stats[sym] = {"total_shifts": 0, "shift_pnl": 0.0}
+        stats[sym]["total_shifts"] += 1
+        stats[sym]["shift_pnl"] = round(
+            stats[sym]["shift_pnl"] + float(ev.get("shift_pnl_total", 0) or 0), 2
+        )
+    return stats
 
 
 def _compute_position_metrics(

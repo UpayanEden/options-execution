@@ -70,6 +70,56 @@
 
 </div>
 
+<!-- ── Position metrics summary ──────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-body text-center py-3">
+                <div class="stat-card-label mb-1">Total Cash Margin</div>
+                <div class="stat-card-value text-warning" id="stat-total-cash-margin">
+                    ₹{{ "{:,.0f}".format(total_cash_margin) }}
+                </div>
+                <div class="text-muted small mt-1">Max-loss across open positions</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-body text-center py-3">
+                <div class="stat-card-label mb-1">Net Premium (incl. Shifts)</div>
+                <div class="stat-card-value pnl-positive" id="stat-total-net-premium">
+                    ₹{{ "{:,.0f}".format(total_net_premium) }}
+                </div>
+                <div class="text-muted small mt-1">Total collected after adjustments</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-body text-center py-3">
+                <div class="stat-card-label mb-1">Portfolio ROI</div>
+                <div class="stat-card-value pnl-positive" id="stat-portfolio-roi">
+                    {% if total_cash_margin > 0 %}
+                    {{ "%.1f"|format(total_net_premium / total_cash_margin * 100) }}%
+                    {% else %}—{% endif %}
+                </div>
+                <div class="text-muted small mt-1">Net premium ÷ cash margin</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-body text-center py-3">
+                <div class="stat-card-label mb-1">Total Stock Margin</div>
+                <div class="stat-card-value text-info" id="stat-total-stock-margin">
+                    <span class="text-muted small">fetching…</span>
+                </div>
+                <div class="text-muted small mt-1">Notional value (spot × qty)</div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ── Capital configuration ─────────────────────────────────────────── -->
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -145,9 +195,13 @@
                         <th>Short Put</th>
                         <th>Short Call</th>
                         <th>Lots</th>
+                        <th>Lot Size</th>
                         <th>Entry Credit</th>
                         <th>Net Premium ₹</th>
                         <th>Premium %</th>
+                        <th>Cash Margin</th>
+                        <th>Stock Margin</th>
+                        <th>ROI%</th>
                         <th>Current Premium</th>
                         <th>Max P/L</th>
                         <th>R/R Strategy</th>
@@ -155,6 +209,8 @@
                         <th>P&amp;L</th>
                         <th>Shift Cost</th>
                         <th>Shifts</th>
+                        <th>Dist→SP</th>
+                        <th>Dist→SC</th>
                         <th class="pe-3">Entry Time</th>
                     </tr>
                 </thead>
@@ -192,17 +248,41 @@
                             {{ pos.get('short_call_strike', '—') }}
                             {% endif %}
                         </td>
-                        <td>{{ pos.get('lots', '—') }}</td>
+                        {% set ss = shift_stats.get(sym, {}) %}
+                        {% set lot_size = pos.get('lot_size', 1) or 1 %}
+                        {% set lots = pos.get('lots', 1) or 1 %}
+                        <td>{{ lots }}</td>
+                        <td class="text-info">{{ lot_size }}</td>
                         <td class="pnl-positive">{{ "₹{:.2f}".format(pos.get('initial_credit', 0) or 0) }}</td>
                         <td class="pnl-positive">
-                            {% if m.net_premium_total is defined and m.net_premium_total is not none %}
-                            ₹{{ "{:,.0f}".format(m.net_premium_total) }}
-                            {% else %}—{% endif %}
+                            {% set net_prem_shifts = (m.net_premium_total or 0) + (ss.get('shift_pnl', 0)) %}
+                            ₹{{ "{:,.0f}".format(net_prem_shifts) }}
+                            {% if ss.get('shift_pnl', 0) != 0 %}
+                            <div style="font-size:0.68rem;color:#9aa8bc;">
+                                incl. {{ "₹{:+,.0f}".format(ss.get('shift_pnl', 0)) }} shifts
+                            </div>
+                            {% endif %}
                         </td>
                         <td>
                             {% if m.net_premium_pct is defined and m.net_premium_pct is not none %}
                             <span class="{% if m.net_premium_pct >= 4 %}pnl-positive{% elif m.net_premium_pct >= 2 %}text-warning{% else %}text-light{% endif %}">
                                 {{ m.net_premium_pct }}%
+                            </span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="text-warning">
+                            {% if m.cash_margin is defined and m.cash_margin is not none %}
+                            ₹{{ "{:,.0f}".format(m.cash_margin) }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td id="stock-margin-{{ sym }}" data-lots="{{ lots }}" data-lotsize="{{ lot_size }}">
+                            <span class="text-muted small">—</span>
+                        </td>
+                        <td>
+                            {% if m.cash_margin and m.cash_margin > 0 and m.net_premium_total %}
+                            {% set roi = (m.net_premium_total / m.cash_margin * 100) %}
+                            <span class="{% if roi >= 5 %}pnl-positive{% elif roi >= 2 %}text-warning{% else %}text-light{% endif %}">
+                                {{ "%.1f"|format(roi) }}%
                             </span>
                             {% else %}—{% endif %}
                         </td>
@@ -232,7 +312,9 @@
                         <td id="shift-cost-{{ sym }}">
                             <span class="text-muted small">—</span>
                         </td>
-                        <td>{{ pos.get('shift_count', 0) }}</td>
+                        <td>{{ ss.get('total_shifts', pos.get('shift_count', 0)) }}</td>
+                        <td id="dist-put-{{ sym }}"><span class="text-muted small">—</span></td>
+                        <td id="dist-call-{{ sym }}"><span class="text-muted small">—</span></td>
                         <td class="timestamp-cell pe-3">
                             {% set et = pos.get('entry_time', '') %}
                             {{ et[:16] if et else '—' }}
@@ -384,18 +466,61 @@ refreshLivePnl();
 setInterval(refreshLivePnl, 60000);
 
 // ── Shift cost per position ───────────────────────────────────────────────
+let _totalStockMargin = 0;
 async function refreshShiftCost() {
     try {
         const resp = await fetch('/api/shift_cost', {cache: 'no-store'});
         const data = await resp.json();
+        _totalStockMargin = 0;
         for (const pos of (data.positions || [])) {
+            const sym = pos.symbol;
+
             // Live spot price
-            const spotCell = document.getElementById(`spot-live-${pos.symbol}`);
+            const spotCell = document.getElementById(`spot-live-${sym}`);
             if (spotCell && pos.current_spot != null) {
                 spotCell.innerHTML = `<span class="text-light fw-semibold">₹${pos.current_spot.toLocaleString('en-IN', {maximumFractionDigits: 1})}</span>`;
             }
 
-            const cell = document.getElementById(`shift-cost-${pos.symbol}`);
+            // Stock margin = spot × lots × lot_size
+            const smCell = document.getElementById(`stock-margin-${sym}`);
+            if (smCell && pos.current_spot != null) {
+                const lots    = parseInt(smCell.dataset.lots    || 1);
+                const lotSize = parseInt(smCell.dataset.lotsize || 1);
+                const sm = pos.current_spot * lots * lotSize;
+                _totalStockMargin += sm;
+                smCell.innerHTML = `<span class="text-info">₹${Math.round(sm).toLocaleString('en-IN')}</span>`;
+            }
+
+            // Distance to short put
+            const dpCell = document.getElementById(`dist-put-${sym}`);
+            if (dpCell) {
+                if (pos.dist_to_short_put != null) {
+                    const d = pos.dist_to_short_put;
+                    const cls = d > 0 ? 'pnl-positive' : 'pnl-negative';
+                    const pct = pos.current_spot ? (d / pos.current_spot * 100).toFixed(1) : '';
+                    dpCell.innerHTML = `<span class="${cls}">${d >= 0 ? '+' : ''}${d.toLocaleString('en-IN', {maximumFractionDigits: 0})}</span>`
+                        + (pct ? `<div style="font-size:0.68rem;color:#9aa8bc;">${pct}% away</div>` : '');
+                } else {
+                    dpCell.innerHTML = '<span class="text-muted small">—</span>';
+                }
+            }
+
+            // Distance to short call
+            const dcCell = document.getElementById(`dist-call-${sym}`);
+            if (dcCell) {
+                if (pos.dist_to_short_call != null) {
+                    const d = pos.dist_to_short_call;
+                    const cls = d > 0 ? 'pnl-positive' : 'pnl-negative';
+                    const pct = pos.current_spot ? (d / pos.current_spot * 100).toFixed(1) : '';
+                    dcCell.innerHTML = `<span class="${cls}">${d >= 0 ? '+' : ''}${d.toLocaleString('en-IN', {maximumFractionDigits: 0})}</span>`
+                        + (pct ? `<div style="font-size:0.68rem;color:#9aa8bc;">${pct}% away</div>` : '');
+                } else {
+                    dcCell.innerHTML = '<span class="text-muted small">—</span>';
+                }
+            }
+
+            // Shift cost cell
+            const cell = document.getElementById(`shift-cost-${sym}`);
             if (!cell) continue;
 
             if (pos.error) {
@@ -403,7 +528,6 @@ async function refreshShiftCost() {
                 continue;
             }
 
-            // Pick the threatened side to display
             const side = pos.threatened_side === 'PUT' ? pos.put_side : pos.call_side;
             const triggered = pos.put_triggered || pos.call_triggered;
             const net = side?.net_total;
@@ -427,6 +551,13 @@ async function refreshShiftCost() {
                 <span ${cls}> ₹${sign}${amt}</span>
                 <div style="font-size:0.68rem;color:#9aa8bc;">${typeStr} if shifted now</div>`;
         }
+
+        // Update total stock margin summary card
+        const smCard = document.getElementById('stat-total-stock-margin');
+        if (smCard && _totalStockMargin > 0) {
+            smCard.innerHTML = `<span class="text-info">₹${Math.round(_totalStockMargin).toLocaleString('en-IN')}</span>`;
+        }
+
     } catch(e) {
         console.error('refreshShiftCost failed:', e);
     }
@@ -538,6 +669,18 @@ function buildPositionRow(pos) {
         ? `<span class="text-info">${m.rr_wait}x</span><div style="font-size:0.68rem;color:#9aa8bc;">if wait ${Math.round((m.premium_pct_target||0)*100)}% decay</div>`
         : '—';
 
+    const lotSize  = pos.lot_size || 1;
+    const lots     = pos.lots || 1;
+    const cashMargin = m.cash_margin != null ? fmtInr(m.cash_margin) : '—';
+    const roi = (m.cash_margin > 0 && m.net_premium_total != null)
+        ? `<span class="${m.net_premium_total/m.cash_margin*100 >= 5 ? 'pnl-positive' : 'text-warning'}">${(m.net_premium_total/m.cash_margin*100).toFixed(1)}%</span>`
+        : '—';
+    const netPremShifts = (m.net_premium_total || 0) + (pos.net_premium_with_shifts != null
+        ? pos.net_premium_with_shifts - (m.net_premium_total || 0) : 0);
+    const netPremDisplay = pos.net_premium_with_shifts != null
+        ? fmtInr(pos.net_premium_with_shifts) : (m.net_premium_total != null ? fmtInr(m.net_premium_total) : '—');
+    const totalShifts = pos.total_shifts != null ? pos.total_shifts : (pos.shift_count || 0);
+
     return `<tr id="pos-row-${sym}" data-symbol="${sym}">
         <td class="ps-3 fw-semibold">${sym || '—'}</td>
         <td id="state-${sym}">${stateBadge}</td>
@@ -546,17 +689,23 @@ function buildPositionRow(pos) {
         <td id="spot-live-${sym}"><span class="text-muted small">—</span></td>
         <td><span class="strike-pill text-danger">${strikes.short_put || pos.short_put_strike || '—'}</span></td>
         <td><span class="strike-pill text-success">${strikes.short_call || pos.short_call_strike || '—'}</span></td>
-        <td>${pos.lots || '—'}</td>
+        <td>${lots}</td>
+        <td class="text-info">${lotSize}</td>
         <td class="pnl-positive">${fmtInr(pos.initial_credit, 2)}</td>
-        <td class="pnl-positive">${m.net_premium_total != null ? fmtInr(m.net_premium_total) : '—'}</td>
+        <td class="pnl-positive">${netPremDisplay}</td>
         <td>${m.net_premium_pct != null ? `<span class="${netPremCls}">${m.net_premium_pct}%</span>` : '—'}</td>
+        <td class="text-warning">${cashMargin}</td>
+        <td id="stock-margin-${sym}" data-lots="${lots}" data-lotsize="${lotSize}"><span class="text-muted small">—</span></td>
+        <td>${roi}</td>
         <td id="curr-prem-${sym}"><span class="text-muted small">—</span></td>
         <td>${maxProfitLoss}</td>
         <td>${rrStrategy}</td>
         <td>${rrWait}</td>
         <td id="pnl-${sym}" data-symbol="${sym}"><span class="text-muted small">—</span></td>
         <td id="shift-cost-${sym}"><span class="text-muted small">—</span></td>
-        <td id="shiftcount-${sym}">${pos.shift_count || 0}</td>
+        <td id="shiftcount-${sym}">${totalShifts}</td>
+        <td id="dist-put-${sym}"><span class="text-muted small">—</span></td>
+        <td id="dist-call-${sym}"><span class="text-muted small">—</span></td>
         <td class="timestamp-cell pe-3">${et || '—'}</td>
     </tr>`;
 }
