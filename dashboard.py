@@ -882,21 +882,22 @@ with tab_quotes:
         st.subheader("Live Quotes")
 
         # ── Controls row ───────────────────────────────────────────────────────
-        col_fetch, col_manual, col_status = st.columns([2, 2, 3])
-        fetch_clicked  = col_fetch.button("\U0001f4e1 Fetch Quotes", type="primary", key="q_fetch")
-        manual_refresh = col_manual.button("\U0001f504 Refresh Now", key="q_manual")
-        with col_status:
-            _last_ts = st.session_state.get("auto_refresh_ts", 0)
-            if _last_ts:
-                _last_str = datetime.fromtimestamp(_last_ts).strftime("%H:%M:%S")
-                _remaining = max(0, int(300 - (time.time() - _last_ts)))
-                _rm, _rs = divmod(_remaining, 60)
-                st.caption(
-                    f"Last fetch: **{_last_str}** IST · "
-                    f"Auto-refresh in {_rm}m {_rs:02d}s"
-                )
-            else:
-                st.caption("Auto-refresh every **5 min** · not fetched yet")
+        col_fetch, col_manual = st.columns(2)
+        fetch_clicked  = col_fetch.button("\U0001f4e1 Fetch Quotes", type="primary",
+                                          key="q_fetch", use_container_width=True)
+        manual_refresh = col_manual.button("\U0001f504 Refresh Now",
+                                           key="q_manual", use_container_width=True)
+        _last_ts = st.session_state.get("auto_refresh_ts", 0)
+        if _last_ts:
+            _last_str  = datetime.fromtimestamp(_last_ts).strftime("%H:%M:%S")
+            _remaining = max(0, int(300 - (time.time() - _last_ts)))
+            _rm, _rs   = divmod(_remaining, 60)
+            st.caption(
+                f"Last fetch: **{_last_str}** IST · "
+                f"Auto-refresh in {_rm}m {_rs:02d}s"
+            )
+        else:
+            st.caption("Auto-refresh every **5 min** · not fetched yet")
 
         # ── Fetch trigger: manual button, explicit refresh, or 5-min auto-tick ─
         _elapsed_since_fetch = time.time() - st.session_state.get("auto_refresh_ts", 0)
