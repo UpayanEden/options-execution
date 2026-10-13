@@ -877,391 +877,371 @@ with tab_status:
 # TAB 2: QUOTES
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_quotes:
-    st.subheader("Live Quotes")
+    @st.fragment(run_every=30)
+    def _quotes_fragment():
+        st.subheader("Live Quotes")
 
-    col_fetch, col_auto = st.columns([2, 3])
-    fetch_clicked = col_fetch.button("\U0001f4e1 Fetch Quotes", type="primary")
-    with col_auto:
-        auto_refresh = st.checkbox("Auto-refresh")
-        if auto_refresh:
-            interval = st.selectbox(
-                "Interval (seconds)",
-                [30, 60, 120],
-                index=1,
-                label_visibility="collapsed",
-            )
-        else:
-            interval = 60
+        # ── Controls row ───────────────────────────────────────────────────────
+        col_fetch, col_manual, col_status = st.columns([2, 2, 3])
+        fetch_clicked  = col_fetch.button("\U0001f4e1 Fetch Quotes", type="primary", key="q_fetch")
+        manual_refresh = col_manual.button("\U0001f504 Refresh Now", key="q_manual")
+        with col_status:
+            _last_ts = st.session_state.get("auto_refresh_ts", 0)
+            if _last_ts:
+                _last_str = datetime.fromtimestamp(_last_ts).strftime("%H:%M:%S")
+                _remaining = max(0, int(300 - (time.time() - _last_ts)))
+                _rm, _rs = divmod(_remaining, 60)
+                st.caption(
+                    f"Last fetch: **{_last_str}** IST · "
+                    f"Auto-refresh in {_rm}m {_rs:02d}s"
+                )
+            else:
+                st.caption("Auto-refresh every **5 min** · not fetched yet")
 
-    if fetch_clicked or (
-        auto_refresh
-        and "auto_refresh_ts" in st.session_state
-        and (time.time() - st.session_state.get("auto_refresh_ts", 0)) >= interval
-    ):
-        if not strategy or not risk:
-            st.error("Strategy or risk config not loaded.")
-        else:
-            with st.spinner("Fetching quotes..."):
-                try:
-                    if creds:
-                        from brokers.zerodha import ZerodhaBroker
-                        broker = ZerodhaBroker.from_env()
+        # ── Fetch trigger: manual button, explicit refresh, or 5-min auto-tick ─
+        _elapsed_since_fetch = time.time() - st.session_state.get("auto_refresh_ts", 0)
+        _auto_tick = "auto_refresh_ts" in st.session_state and _elapsed_since_fetch >= 298
 
-                        from execution.quote_engine import QuoteEngine
-                        qe = QuoteEngine(broker)
-
-                        instruments = []
-                        resolved_map = {}
-                        lot_size_val = 100
-                        for i, leg in enumerate(strategy.legs):
-                            inst = broker.resolve_instrument(
-                                underlying=strategy.underlying,
-                                exchange=strategy.exchange,
-                                expiry=strategy.expiry,
-                                strike=leg.strike,
-                                option_type=leg.option_type.value,
+        if fetch_clicked or manual_refresh or _auto_tick:
+            if not strategy or not risk:
+                st.error("Strategy or risk config not loaded.")
+            else:
+                with st.spinner("Fetching quotes..."):
+                    try:
+                        # ── 1. Resolve instruments & fetch quotes ──────────────
+                        if creds:
+                            from brokers.zerodha import ZerodhaBroker
+                            broker = ZerodhaBroker.from_env()
+                            from execution.quote_engine import QuoteEngine
+                            qe = QuoteEngine(broker)
+                            instruments = []
+                            resolved_map = {}
+                            lot_size_val = 100
+                            for i, leg in enumerate(strategy.legs):
+                                inst = broker.resolve_instrument(
+                                    underlying=strategy.underlying,
+                                    exchange=strategy.exchange,
+                                    expiry=strategy.expiry,
+                                    strike=leg.strike,
+                                    option_type=leg.option_type.value,
+                                )
+                                instruments.append(
+                                    (inst.instrument_token, inst.trading_symbol)
+                                )
+                                resolved_map[i] = inst.trading_symbol
+                                lot_size_val = inst.lot_size
+                            quotes = qe.fetch_all(instruments)
+                        else:
+                            from unittest.mock import MagicMock
+                            from brokers.paper import PaperBroker
+                            from execution.models import Quote
+                            from execution.quote_engine import QuoteEngine
+                            sim_prices = {
+                                0: ("7.50", "8.00"),
+                                1: ("12.00", "12.50"),
+                                2: ("13.00", "13.50"),
+                                3: ("10.00", "10.50"),
+                            }
+                            resolved_map = {}
+                            instruments = []
+                            for i, leg in enumerate(strategy.legs):
+                                sym = (
+                                    f"{strategy.underlying}"
+                                    f"{strategy.expiry.strftime('%y%b').upper()}"
+                                    f"{int(leg.strike)}{leg.option_type.value}"
+                                )
+                                resolved_map[i] = sym
+                                instruments.append((1000 + i, sym))
+                            def make_sim_quotes(instrument_list):
+                                result = {}
+                                for token, sym in instrument_list:
+                                    idx = token - 1000
+                                    bid, ask = sim_prices.get(idx, ("5.00", "6.00"))
+                                    q = Quote(
+                                        instrument_token=token,
+                                        trading_symbol=sym,
+                                        exchange=strategy.exchange,
+                                        timestamp=datetime.now(IST),
+                                        ltp=Decimal(bid),
+                                        bid=Decimal(bid),
+                                        bid_qty=200,
+                                        ask=Decimal(ask),
+                                        ask_qty=200,
+                                        volume=10000,
+                                        oi=100000,
+                                    )
+                                    result[token] = q
+                                return result
+                            mock_source = MagicMock()
+                            mock_source.get_quotes.side_effect = make_sim_quotes
+                            broker = PaperBroker(
+                                live_quote_source=mock_source,
+                                fill_delay_seconds=0,
                             )
-                            instruments.append(
-                                (inst.instrument_token, inst.trading_symbol)
-                            )
-                            resolved_map[i] = inst.trading_symbol
-                            lot_size_val = inst.lot_size
+                            qe = QuoteEngine(broker)
+                            quotes = qe.fetch_all(instruments)
+                            lot_size_val = 100
 
-                        quotes = qe.fetch_all(instruments)
                         st.session_state.last_quotes = quotes
                         st.session_state.resolved_symbols = resolved_map
                         st.session_state.lot_size = lot_size_val
                         st.session_state.quote_engine = qe
 
-                    else:
-                        # Simulated quotes for paper mode without credentials
-                        from unittest.mock import MagicMock
-                        from brokers.paper import PaperBroker
-                        from execution.models import Quote
-                        from execution.quote_engine import QuoteEngine
-
-                        sim_prices = {
-                            0: ("7.50", "8.00"),
-                            1: ("12.00", "12.50"),
-                            2: ("13.00", "13.50"),
-                            3: ("10.00", "10.50"),
+                        quotes_by_sym = {
+                            sym: quotes[sym]
+                            for sym in resolved_map.values()
+                            if sym in quotes
                         }
 
-                        resolved_map = {}
-                        instruments = []
-                        for i, leg in enumerate(strategy.legs):
-                            sym = (
-                                f"{strategy.underlying}"
-                                f"{strategy.expiry.strftime('%y%b').upper()}"
-                                f"{int(leg.strike)}{leg.option_type.value}"
+                        # ── 2. Basket credit ───────────────────────────────────
+                        try:
+                            credit = qe.calculate_executable_basket_credit(
+                                strategy.legs,
+                                quotes_by_sym,
+                                lot_size_val,
+                                strategy.lots,
+                                resolved_map,
                             )
-                            resolved_map[i] = sym
-                            instruments.append((1000 + i, sym))
+                            st.session_state.quotes_credit = credit
+                            st.session_state.quotes_credit_err = None
+                        except Exception as _ce:
+                            st.session_state.quotes_credit = None
+                            st.session_state.quotes_credit_err = str(_ce)
 
-                        def make_sim_quotes(instrument_list):
-                            result = {}
-                            for token, sym in instrument_list:
-                                idx = token - 1000
-                                bid, ask = sim_prices.get(idx, ("5.00", "6.00"))
-                                q = Quote(
-                                    instrument_token=token,
-                                    trading_symbol=sym,
-                                    exchange=strategy.exchange,
-                                    timestamp=datetime.now(IST),
-                                    ltp=Decimal(bid),
-                                    bid=Decimal(bid),
-                                    bid_qty=200,
-                                    ask=Decimal(ask),
-                                    ask_qty=200,
-                                    volume=10000,
-                                    oi=100000,
+                        # ── 3. Pre-trade validation ────────────────────────────
+                        try:
+                            from risk.validator import PreTradeValidator
+                            from risk.payoff import calculate_payoff_from_credit
+                            _credit_v = st.session_state.quotes_credit
+                            if _credit_v:
+                                validator = PreTradeValidator(risk)
+                                payoff = calculate_payoff_from_credit(
+                                    strategy, _credit_v.net_credit, lot_size_val
                                 )
-                                result[token] = q
-                            return result
+                                report = validator.validate(strategy, quotes_by_sym, payoff, None)
+                                st.session_state.quotes_validation = report
+                            else:
+                                st.session_state.quotes_validation = None
+                        except Exception:
+                            st.session_state.quotes_validation = None
 
-                        mock_source = MagicMock()
-                        mock_source.get_quotes.side_effect = make_sim_quotes
+                        # ── 4. Margin (live only) ──────────────────────────────
+                        if creds:
+                            try:
+                                _basket_orders = []
+                                for _i, _leg in enumerate(strategy.legs):
+                                    _sym_mg = resolved_map.get(_i, "")
+                                    _q_mg = quotes.get(_sym_mg)
+                                    if not _q_mg:
+                                        continue
+                                    _price_mg = float(
+                                        _q_mg.bid if _leg.side.value == "SELL" else _q_mg.ask
+                                    )
+                                    _basket_orders.append({
+                                        "exchange": strategy.exchange,
+                                        "tradingsymbol": _sym_mg,
+                                        "transaction_type": _leg.side.value,
+                                        "variety": "regular",
+                                        "product": "NRML",
+                                        "order_type": "LIMIT",
+                                        "quantity": lot_size_val * strategy.lots,
+                                        "price": _price_mg,
+                                    })
+                                _margin_result = broker.get_basket_margin(_basket_orders)
+                                _funds = broker.get_margins()
+                                st.session_state.quotes_margin = {
+                                    "result": _margin_result,
+                                    "funds": _funds,
+                                    "error": None,
+                                }
+                            except Exception as _me:
+                                st.session_state.quotes_margin = {"error": str(_me)}
+                        else:
+                            st.session_state.quotes_margin = None
 
-                        broker = PaperBroker(
-                            live_quote_source=mock_source,
-                            fill_delay_seconds=0,
+                        st.session_state.auto_refresh_ts = time.time()
+                        st.success(
+                            f"Quotes fetched at {now_ist().strftime('%H:%M:%S IST')}"
                         )
 
-                        qe = QuoteEngine(broker)
-                        quotes = qe.fetch_all(instruments)
-                        lot_size_val = 100
+                    except Exception as e:
+                        st.error(f"Quote fetch error: {e}")
 
-                        st.session_state.last_quotes = quotes
-                        st.session_state.resolved_symbols = resolved_map
-                        st.session_state.lot_size = lot_size_val
-                        st.session_state.quote_engine = qe
-
-                    st.session_state.auto_refresh_ts = time.time()
-                    st.success(
-                        f"Quotes fetched at {now_ist().strftime('%H:%M:%S IST')}"
-                    )
-
-                except Exception as e:
-                    st.error(f"Quote fetch error: {e}")
-
-    if st.session_state.last_quotes and risk and strategy:
-        try:
-            import pandas as pd
-
-            quotes = st.session_state.last_quotes
-            resolved_symbols = st.session_state.resolved_symbols
-            lot_size_val = st.session_state.lot_size
-
-            rows = []
-            for i, leg in enumerate(strategy.legs):
-                sym = resolved_symbols.get(i, "")
-                q = quotes.get(sym)
-                if q:
-                    spread_pct = float(q.spread_pct)
-                    stale = q.is_stale(risk.quote_staleness_seconds)
-                    rows.append(
-                        {
-                            "Side": leg.side.value,
-                            "Symbol": sym,
-                            "Bid": float(q.bid),
-                            "Ask": float(q.ask),
-                            "LTP": float(q.ltp),
-                            "Spread %": round(spread_pct, 2),
-                            "OI": q.oi,
-                            "Stale": "\u26a0\ufe0f" if stale else "\u2713",
-                            "Wide": (
-                                "\u26a0\ufe0f"
-                                if spread_pct > float(risk.max_bid_ask_spread_pct)
-                                else "\u2713"
-                            ),
-                        }
-                    )
-                else:
-                    rows.append(
-                        {
-                            "Side": leg.side.value,
-                            "Symbol": sym,
-                            "Bid": None,
-                            "Ask": None,
-                            "LTP": None,
-                            "Spread %": None,
-                            "OI": None,
-                            "Stale": "?",
-                            "Wide": "?",
-                        }
-                    )
-
-            df = pd.DataFrame(rows)
-            st.dataframe(df, use_container_width=True, hide_index=True)
-
-            # Basket credit
-            st.subheader("Basket Credit")
+        # ── Display (reads session_state only — zero API calls) ────────────────
+        if st.session_state.last_quotes and risk and strategy:
             try:
-                from execution.quote_engine import QuoteEngine
+                import pandas as pd
 
-                # Rebuild quote engine from current broker (or new one for display only)
-                if creds:
-                    from brokers.zerodha import ZerodhaBroker
-                    _broker_for_credit = ZerodhaBroker.from_env()
-                else:
-                    from unittest.mock import MagicMock
-                    from brokers.paper import PaperBroker
+                quotes = st.session_state.last_quotes
+                resolved_symbols = st.session_state.resolved_symbols
+                lot_size_val = st.session_state.lot_size
 
-                    _mock = MagicMock()
-                    _mock.get_quotes.return_value = {}
-                    _broker_for_credit = PaperBroker(
-                        live_quote_source=_mock, fill_delay_seconds=0
+                rows = []
+                for i, leg in enumerate(strategy.legs):
+                    sym = resolved_symbols.get(i, "")
+                    q = quotes.get(sym)
+                    if q:
+                        spread_pct = float(q.spread_pct)
+                        stale = q.is_stale(risk.quote_staleness_seconds)
+                        rows.append(
+                            {
+                                "Side": leg.side.value,
+                                "Symbol": sym,
+                                "Bid": float(q.bid),
+                                "Ask": float(q.ask),
+                                "LTP": float(q.ltp),
+                                "Spread %": round(spread_pct, 2),
+                                "OI": q.oi,
+                                "Stale": "\u26a0\ufe0f" if stale else "\u2713",
+                                "Wide": (
+                                    "\u26a0\ufe0f"
+                                    if spread_pct > float(risk.max_bid_ask_spread_pct)
+                                    else "\u2713"
+                                ),
+                            }
+                        )
+                    else:
+                        rows.append(
+                            {
+                                "Side": leg.side.value,
+                                "Symbol": sym,
+                                "Bid": None,
+                                "Ask": None,
+                                "LTP": None,
+                                "Spread %": None,
+                                "OI": None,
+                                "Stale": "?",
+                                "Wide": "?",
+                            }
+                        )
+
+                df = pd.DataFrame(rows)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+
+                # ── Basket Credit ──────────────────────────────────────────────
+                st.subheader("Basket Credit")
+                credit = st.session_state.get("quotes_credit")
+                credit_err = st.session_state.get("quotes_credit_err")
+                if credit:
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Buy Cost", fmt_pts(credit.buy_cost))
+                    c2.metric("Sell Credit", fmt_pts(credit.sell_credit))
+                    net = float(credit.net_credit)
+                    min_credit = float(risk.min_net_credit)
+                    c3.metric(
+                        "Net Credit",
+                        fmt_pts(credit.net_credit),
+                        delta=f"{net - min_credit:+.2f} vs min",
+                        delta_color="normal" if net >= min_credit else "inverse",
                     )
+                    c4.metric("Total Credit (INR)", fmt_inr(credit.net_credit_total))
+                    if net >= min_credit:
+                        st.success(
+                            f"\u2705 Net credit {net:.2f} pts is ABOVE minimum {min_credit:.2f} pts"
+                        )
+                    else:
+                        st.warning(
+                            f"\u26a0\ufe0f Net credit {net:.2f} pts is BELOW minimum {min_credit:.2f} pts"
+                        )
+                elif credit_err:
+                    st.error(f"Credit calculation error: {credit_err}")
 
-                _qe = QuoteEngine(_broker_for_credit)
-                quotes_by_sym = {
-                    sym: quotes[sym]
-                    for sym in resolved_symbols.values()
-                    if sym in quotes
-                }
-
-                credit = _qe.calculate_executable_basket_credit(
-                    strategy.legs,
-                    quotes_by_sym,
-                    lot_size_val,
-                    strategy.lots,
-                    resolved_symbols,
-                )
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Buy Cost", fmt_pts(credit.buy_cost))
-                c2.metric("Sell Credit", fmt_pts(credit.sell_credit))
-                net = float(credit.net_credit)
-                min_credit = float(risk.min_net_credit)
-                c3.metric(
-                    "Net Credit",
-                    fmt_pts(credit.net_credit),
-                    delta=f"{net - min_credit:+.2f} vs min",
-                    delta_color="normal" if net >= min_credit else "inverse",
-                )
-                c4.metric("Total Credit (INR)", fmt_inr(credit.net_credit_total))
-
-                if net >= min_credit:
-                    st.success(
-                        f"\u2705 Net credit {net:.2f} pts is ABOVE minimum {min_credit:.2f} pts"
-                    )
-                else:
-                    st.warning(
-                        f"\u26a0\ufe0f Net credit {net:.2f} pts is BELOW minimum {min_credit:.2f} pts"
-                    )
-
-                # Pre-trade validation
+                # ── Pre-Trade Validation ───────────────────────────────────────
                 st.subheader("Pre-Trade Validation")
-                try:
-                    from risk.validator import PreTradeValidator
-                    from risk.payoff import calculate_payoff_from_credit
-
-                    validator = PreTradeValidator(risk)
-                    payoff = calculate_payoff_from_credit(
-                        strategy, credit.net_credit, lot_size_val
-                    )
-                    report = validator.validate(strategy, quotes_by_sym, payoff, None)
+                report = st.session_state.get("quotes_validation")
+                if report:
                     for r in report.results:
                         icon = "\u2705" if r.passed else "\u274c"
                         val_str = str(r.value or "")
                         lim_str = f" (limit: {r.limit})" if r.limit else ""
                         msg = f" \u2014 {r.message}" if r.message else ""
                         st.write(f"{icon} **{r.name}**: {val_str}{lim_str}{msg}")
-                except Exception as e:
-                    st.error(f"Validation error: {e}")
 
-            except Exception as e:
-                st.error(f"Credit calculation error: {e}")
-
-            # ── Margin Required ────────────────────────────────────────────
-            st.subheader("Margin Required")
-            try:
-                from risk.payoff import calculate_payoff_from_credit
-
+                # ── Margin Required ────────────────────────────────────────────
+                st.subheader("Margin Required")
                 _capital = float(risk.capital_limit)
-
-                if creds:
-                    # Build basket order list for Zerodha margin API
-                    from brokers.zerodha import ZerodhaBroker
-                    _zb_margin = ZerodhaBroker.from_env()
-
-                    _basket_orders = []
-                    for _i, _leg in enumerate(strategy.legs):
-                        _sym_mg = resolved_symbols.get(_i, "")
-                        _q_mg = quotes.get(_sym_mg)
-                        if not _q_mg:
-                            continue
-                        _price_mg = float(_q_mg.bid if _leg.side.value == "SELL" else _q_mg.ask)
-                        _basket_orders.append({
-                            "exchange": strategy.exchange,
-                            "tradingsymbol": _sym_mg,
-                            "transaction_type": _leg.side.value,
-                            "variety": "regular",
-                            "product": "NRML",
-                            "order_type": "LIMIT",
-                            "quantity": lot_size_val * strategy.lots,
-                            "price": _price_mg,
-                        })
-
-                    _margin_result = _zb_margin.get_basket_margin(_basket_orders)
-                    _initial = _margin_result.get("initial", {})
-                    _final   = _margin_result.get("final",   {})
-                    _charges = _margin_result.get("charges",  {})
-
-                    _span     = float(_final.get("span", _initial.get("span", 0)) or 0)
-                    _exposure = float(_final.get("exposure", _initial.get("exposure", 0)) or 0)
-                    _required = float(_final.get("total", _initial.get("total", 0)) or 0)
-                    if _required == 0:
-                        _required = _span + _exposure
-                    _charges_total = float(_charges.get("total", 0) or 0)
-
-                    # Fetch actual available funds from Zerodha account
-                    _avail = None
-                    try:
-                        _funds = _zb_margin.get_margins()
-                        _eq = _funds.get("equity", {})
-                        # live_balance = cash + intraday payin, after all debits
-                        _live = _eq.get("available", {}).get("live_balance")
-                        _net  = _eq.get("net")
-                        # Use live_balance preferentially; fall back to net
-                        _avail = float(_live if _live is not None else _net or 0)
-                        st.caption(f"Zerodha account balance: ₹{_avail:,.2f} (live)")
-                    except Exception as _mf_err:
-                        st.caption(f"Could not fetch account balance: {_mf_err}")
-                    if _avail is None:
-                        _avail = _capital
-                        st.caption(f"Using capital limit ₹{_capital:,.0f} as proxy for available funds.")
-
-                    _utilization = (_required / _avail * 100) if _avail > 0 else 0
-
-                    mc1, mc2, mc3, mc4, mc5 = st.columns(5)
-                    mc1.metric("SPAN Margin", fmt_inr(_span))
-                    mc2.metric("Exposure Margin", fmt_inr(_exposure))
-                    mc3.metric("Total Required", fmt_inr(_required))
-                    mc4.metric("Est. Charges", fmt_inr(_charges_total))
-                    mc5.metric("Available Funds", fmt_inr(_avail))
-
-                    st.progress(
-                        min(_utilization / 100, 1.0),
-                        text=f"Margin utilization: {_utilization:.1f}%  ({fmt_inr(_required)} of {fmt_inr(_avail)})"
-                    )
-                    if _required > _avail:
-                        st.error(f"❌ Insufficient funds — need {fmt_inr(_required)}, have {fmt_inr(_avail)}")
-                    elif _utilization > 80:
-                        st.warning(f"⚠️ High margin utilization ({_utilization:.1f}%). Consider reducing lots.")
+                margin_data = st.session_state.get("quotes_margin")
+                if creds and margin_data:
+                    if margin_data.get("error"):
+                        st.error(f"Margin fetch error: {margin_data['error']}")
                     else:
-                        st.success(f"✅ Sufficient funds. {fmt_inr(_avail - _required - _charges_total)} will remain free.")
-
-                else:
-                    # Estimate margin from max loss (hedged IC gets full exchange credit)
-                    _payoff_mg = None
-                    try:
-                        _payoff_mg = calculate_payoff_from_credit(
-                            strategy,
-                            credit.net_credit,
-                            lot_size_val,
-                        )
-                    except Exception:
-                        pass
-
-                    if _payoff_mg:
-                        _max_loss_est = float(_payoff_mg.max_loss)
-                        # For a fully hedged IC, SPAN ~ max_loss; add ~10% exposure
-                        _span_est = _max_loss_est
-                        _exposure_est = _max_loss_est * 0.10
-                        _required_est = _span_est + _exposure_est
-
-                        me1, me2, me3 = st.columns(3)
-                        me1.metric("Est. SPAN (max loss)", fmt_inr(_span_est))
-                        me2.metric("Est. Exposure (~10%)", fmt_inr(_exposure_est))
-                        me3.metric("Est. Total Margin", fmt_inr(_required_est))
-
-                        _util_est = (_required_est / _capital * 100) if _capital > 0 else 0
+                        _margin_result = margin_data["result"]
+                        _funds_data    = margin_data["funds"]
+                        _initial  = _margin_result.get("initial", {})
+                        _final    = _margin_result.get("final",   {})
+                        _charges  = _margin_result.get("charges",  {})
+                        _span     = float(_final.get("span",     _initial.get("span",     0)) or 0)
+                        _exposure = float(_final.get("exposure", _initial.get("exposure", 0)) or 0)
+                        _required = float(_final.get("total",    _initial.get("total",    0)) or 0)
+                        if _required == 0:
+                            _required = _span + _exposure
+                        _charges_total = float(_charges.get("total", 0) or 0)
+                        _avail = None
+                        try:
+                            _eq   = _funds_data.get("equity", {})
+                            _live = _eq.get("available", {}).get("live_balance")
+                            _net  = _eq.get("net")
+                            _avail = float(_live if _live is not None else _net or 0)
+                            st.caption(f"Zerodha account balance: ₹{_avail:,.2f} (live)")
+                        except Exception as _mf_err:
+                            st.caption(f"Could not read account balance: {_mf_err}")
+                        if _avail is None:
+                            _avail = _capital
+                            st.caption(f"Using capital limit ₹{_capital:,.0f} as proxy for available funds.")
+                        _utilization = (_required / _avail * 100) if _avail > 0 else 0
+                        mc1, mc2, mc3, mc4, mc5 = st.columns(5)
+                        mc1.metric("SPAN Margin",      fmt_inr(_span))
+                        mc2.metric("Exposure Margin",  fmt_inr(_exposure))
+                        mc3.metric("Total Required",   fmt_inr(_required))
+                        mc4.metric("Est. Charges",     fmt_inr(_charges_total))
+                        mc5.metric("Available Funds",  fmt_inr(_avail))
                         st.progress(
-                            min(_util_est / 100, 1.0),
-                            text=f"Est. margin utilization: {_util_est:.1f}%  of ₹{_capital:,.0f} capital limit"
+                            min(_utilization / 100, 1.0),
+                            text=f"Margin utilization: {_utilization:.1f}%  ({fmt_inr(_required)} of {fmt_inr(_avail)})"
                         )
-                        if _required_est > _capital:
-                            st.error(f"❌ Capital limit ₹{_capital:,.0f} may be insufficient. Estimated need: {fmt_inr(_required_est)}")
+                        if _required > _avail:
+                            st.error(f"❌ Insufficient funds — need {fmt_inr(_required)}, have {fmt_inr(_avail)}")
+                        elif _utilization > 80:
+                            st.warning(f"⚠️ High margin utilization ({_utilization:.1f}%). Consider reducing lots.")
                         else:
-                            st.success(f"✅ Within capital limit. Est. free after trade: {fmt_inr(_capital - _required_est)}")
-
-                        st.caption("⚠️ Estimates only — connect Zerodha for exact SPAN/Exposure margin from NSE.")
+                            st.success(f"✅ Sufficient funds. {fmt_inr(_avail - _required - _charges_total)} will remain free.")
+                else:
+                    # Paper mode — estimate from max loss
+                    from risk.payoff import calculate_payoff_from_credit
+                    _credit_mg = st.session_state.get("quotes_credit")
+                    _lot_mg    = st.session_state.get("lot_size", 100)
+                    if _credit_mg:
+                        try:
+                            _payoff_mg = calculate_payoff_from_credit(
+                                strategy, _credit_mg.net_credit, _lot_mg
+                            )
+                            _max_loss_est  = float(_payoff_mg.max_loss)
+                            _span_est      = _max_loss_est
+                            _exposure_est  = _max_loss_est * 0.10
+                            _required_est  = _span_est + _exposure_est
+                            me1, me2, me3 = st.columns(3)
+                            me1.metric("Est. SPAN (max loss)", fmt_inr(_span_est))
+                            me2.metric("Est. Exposure (~10%)",  fmt_inr(_exposure_est))
+                            me3.metric("Est. Total Margin",     fmt_inr(_required_est))
+                            _util_est = (_required_est / _capital * 100) if _capital > 0 else 0
+                            st.progress(
+                                min(_util_est / 100, 1.0),
+                                text=f"Est. margin utilization: {_util_est:.1f}%  of ₹{_capital:,.0f} capital limit"
+                            )
+                            if _required_est > _capital:
+                                st.error(f"❌ Capital limit ₹{_capital:,.0f} may be insufficient. Estimated need: {fmt_inr(_required_est)}")
+                            else:
+                                st.success(f"✅ Within capital limit. Est. free after trade: {fmt_inr(_capital - _required_est)}")
+                            st.caption("⚠️ Estimates only — connect Zerodha for exact SPAN/Exposure margin from NSE.")
+                        except Exception:
+                            pass
                     else:
                         st.info("Fetch quotes first to calculate margin estimate.")
 
             except Exception as e:
-                st.error(f"Margin calculation error: {e}")
+                st.error(f"Quotes display error: {e}")
 
-        except Exception as e:
-            st.error(f"Quotes display error: {e}")
-
-    if auto_refresh and st.session_state.last_quotes:
-        elapsed = time.time() - st.session_state.get("auto_refresh_ts", 0)
-        remaining = max(0, int(interval - elapsed))
-        st.caption(f"Auto-refresh in {remaining}s")
-        if elapsed >= interval:
-            time.sleep(0.1)
-            st.rerun()
+    _quotes_fragment()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
