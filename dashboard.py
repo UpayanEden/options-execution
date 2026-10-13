@@ -2014,6 +2014,135 @@ with tab_monitor:
                         f"Run ID: {s['id']}  |  Created: {s['created_at']}"
                     )
 
+                    # ── Position Summary Metrics ───────────────────────────
+                    st.subheader("📊 Position Summary")
+                    try:
+                        import re as _re_ps
+
+                        # Lot size
+                        _ls_df = pd.read_sql(
+                            text("SELECT lot_size FROM strategy_legs WHERE strategy_id=:sid AND lot_size IS NOT NULL LIMIT 1"),
+                            conn, params={"sid": str(s["id"])}
+                        )
+                        _lot_size_disp = int(_ls_df.iloc[0]["lot_size"]) if not _ls_df.empty else None
+
+                        # Total shifts (SHIFT_COMPLETE events)
+                        _sh_df = pd.read_sql(
+                            text("SELECT COUNT(*) as cnt FROM system_events WHERE strategy_id=:sid AND event_type='SHIFT_COMPLETE'"),
+                            conn, params={"sid": str(s["id"])}
+                        )
+                        _total_shifts = int(_sh_df.iloc[0]["cnt"]) if not _sh_df.empty else 0
+
+                        # Total premium collected: SELL fills − BUY fills across all shifts
+                        _pr_df = pd.read_sql(
+                            text("""
+                                SELECT SUM(
+                                    CASE WHEN side='SELL'
+                                         THEN average_fill_price * filled_quantity
+                                         ELSE -average_fill_price * filled_quantity
+                                    END
+                                ) as net_prem
+                                FROM orders
+                                WHERE strategy_id=:sid AND status='FILLED'
+                            """),
+                            conn, params={"sid": str(s["id"])}
+                        )
+                        _total_prem = float(_pr_df.iloc[0]["net_prem"] or 0) if not _pr_df.empty else 0.0
+
+                        # Short call / put strikes from positions
+                        _pos_dist = pd.read_sql(
+                            text("SELECT side, trading_symbol FROM positions WHERE strategy_id=:sid"),
+                            conn, params={"sid": str(s["id"])}
+                        )
+                        _sc_k_ps = _sp_k_ps = None
+                        for _, _pr in _pos_dist.iterrows():
+                            _sym_ps = str(_pr["trading_symbol"])
+                            _side_ps = str(_pr["side"])
+                            _m_ps = _re_ps.search(r'(\d+(?:\.\d+)?)(CE|PE)$', _sym_ps)
+                            if not _m_ps:
+                                continue
+                            _k_ps = float(_m_ps.group(1))
+                            if _side_ps == "SELL" and _sym_ps.endswith("CE"):
+                                _sc_k_ps = _k_ps
+                            elif _side_ps == "SELL" and _sym_ps.endswith("PE"):
+                                _sp_k_ps = _k_ps
+
+                        # Spot: latest risk_snapshot, or override with live quotes_margin data
+                        _spot_ps = None
+                        _rs_ps = pd.read_sql(
+                            text("SELECT underlying_spot FROM risk_snapshots WHERE strategy_id=:sid ORDER BY snapshot_time DESC LIMIT 1"),
+                            conn, params={"sid": str(s["id"])}
+                        )
+                        if not _rs_ps.empty and _rs_ps.iloc[0]["underlying_spot"]:
+                            _spot_ps = float(_rs_ps.iloc[0]["underlying_spot"])
+
+                        # Margin from Quotes tab session_state (populated when quotes are fetched)
+                        _qm_ps = st.session_state.get("quotes_margin") or {}
+                        _cash_margin_ps = _stock_margin_ps = _roi_ps = None
+                        if _qm_ps and not _qm_ps.get("error"):
+                            _mr_ps = _qm_ps.get("result", {})
+                            _mf_ps = _mr_ps.get("final", _mr_ps.get("initial", {}))
+                            _span_ps    = float(_mf_ps.get("span",     0) or 0)
+                            _exp_ps     = float(_mf_ps.get("exposure", 0) or 0)
+                            _cash_margin_ps = _span_ps + _exp_ps
+                            _fd_ps  = _qm_ps.get("funds", {})
+                            _eq_ps  = (_fd_ps.get("equity") or {}).get("available", {})
+                            _stock_margin_ps = float(_eq_ps.get("collateral", 0) or 0)
+                            if _cash_margin_ps > 0 and _total_prem:
+                                _roi_ps = (_total_prem / _cash_margin_ps) * 100
+
+                        # ── Row 1: Lot size · Shifts · Premium · ROI ───────
+                        _rc1, _rc2, _rc3, _rc4 = st.columns(4)
+                        _rc1.metric("Lot Size", _lot_size_disp if _lot_size_disp else "—")
+                        _rc2.metric("Total Shifts", _total_shifts)
+                        _rc3.metric(
+                            "Premium Collected",
+                            fmt_inr(_total_prem) if _total_prem else "—",
+                            help="Net of all SELL fills minus BUY fills across entry and shifts",
+                        )
+                        _rc4.metric(
+                            "ROI on Cash Margin",
+                            f"{_roi_ps:.1f}%" if _roi_ps is not None else "—",
+                            help="Net premium ÷ cash margin (SPAN + Exposure). Fetch Quotes to update.",
+                        )
+
+                        # ── Row 2: Cash margin · Stock margin · Distances ──
+                        _rc5, _rc6, _rc7, _rc8 = st.columns(4)
+                        _rc5.metric(
+                            "Cash Margin Used",
+                            fmt_inr(_cash_margin_ps) if _cash_margin_ps is not None else "—",
+                            help="SPAN + Exposure margin in cash. Fetch Quotes to update.",
+                        )
+                        _rc6.metric(
+                            "Stock Collateral",
+                            fmt_inr(_stock_margin_ps) if _stock_margin_ps is not None else "—",
+                            help="Pledged stocks/ETFs used as margin collateral.",
+                        )
+                        if _spot_ps and _sc_k_ps:
+                            _d_call = _sc_k_ps - _spot_ps
+                            _rc7.metric(
+                                "Dist. → Short Call",
+                                f"{_d_call:+.0f} pts",
+                                delta=f"{_d_call / _spot_ps * 100:.1f}% from spot",
+                                delta_color="normal" if _d_call > 0 else "inverse",
+                            )
+                        else:
+                            _rc7.metric("Dist. → Short Call", "—")
+                        if _spot_ps and _sp_k_ps:
+                            _d_put = _spot_ps - _sp_k_ps
+                            _rc8.metric(
+                                "Dist. → Short Put",
+                                f"{_d_put:+.0f} pts",
+                                delta=f"{_d_put / _spot_ps * 100:.1f}% from spot",
+                                delta_color="normal" if _d_put > 0 else "inverse",
+                            )
+                        else:
+                            _rc8.metric("Dist. → Short Put", "—")
+
+                        st.divider()
+                    except Exception as _psm_err:
+                        st.warning(f"Position summary unavailable: {_psm_err}")
+
                     # MTM P&L section (computed from current sim prices if positions exist)
                     st.subheader("MTM P&L")
                     try:
