@@ -803,6 +803,37 @@ def create_app() -> Flask:
 
         return jsonify({"positions": results})
 
+    @app.route("/api/margin_summary")
+    def api_margin_summary():
+        """
+        Return actual Zerodha margin data: pledged stock collateral and how much
+        of it is consumed by current F&O positions.
+
+        stock_margin_used = min(collateral_pledged, span + exposure)
+        """
+        try:
+            broker = _get_read_broker()
+            funds = broker._kite.margins()
+            eq = funds.get("equity", {})
+            used = eq.get("used", {})
+            available = eq.get("available", {})
+            span = float(used.get("span", 0) or 0)
+            exposure = float(used.get("exposure", 0) or 0)
+            collateral = float(available.get("collateral", 0) or 0)
+            total_required = span + exposure
+            stock_margin_used = min(collateral, total_required)
+            cash_margin_used = max(0.0, total_required - collateral)
+            return jsonify({
+                "span": round(span, 2),
+                "exposure": round(exposure, 2),
+                "total_required": round(total_required, 2),
+                "collateral_pledged": round(collateral, 2),
+                "stock_margin_used": round(stock_margin_used, 2),
+                "cash_margin_used": round(cash_margin_used, 2),
+            })
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 200
+
     @app.route("/api/alerts")
     def api_alerts():
         """Return alerts JSON. Query param: count_only=true returns just the badge count."""

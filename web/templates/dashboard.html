@@ -465,13 +465,31 @@ async function refreshLivePnl() {
 refreshLivePnl();
 setInterval(refreshLivePnl, 60000);
 
+// ── Margin summary (actual Zerodha stock collateral) ─────────────────────
+async function refreshMarginSummary() {
+    try {
+        const resp = await fetch('/api/margin_summary', {cache: 'no-store'});
+        const data = await resp.json();
+        const smCard = document.getElementById('stat-total-stock-margin');
+        if (!smCard) return;
+        if (data.error) {
+            smCard.innerHTML = `<span class="text-muted small">—</span>`;
+            return;
+        }
+        smCard.innerHTML = `<span class="text-info">₹${Math.round(data.stock_margin_used).toLocaleString('en-IN')}</span>`;
+    } catch(e) {
+        console.error('refreshMarginSummary failed:', e);
+    }
+}
+
+refreshMarginSummary();
+setInterval(refreshMarginSummary, 60000);
+
 // ── Shift cost per position ───────────────────────────────────────────────
-let _totalStockMargin = 0;
 async function refreshShiftCost() {
     try {
         const resp = await fetch('/api/shift_cost', {cache: 'no-store'});
         const data = await resp.json();
-        _totalStockMargin = 0;
         for (const pos of (data.positions || [])) {
             const sym = pos.symbol;
 
@@ -481,14 +499,10 @@ async function refreshShiftCost() {
                 spotCell.innerHTML = `<span class="text-light fw-semibold">₹${pos.current_spot.toLocaleString('en-IN', {maximumFractionDigits: 1})}</span>`;
             }
 
-            // Stock margin = spot × lots × lot_size
+            // Per-row stock margin cell — cleared (actual margin from /api/margin_summary)
             const smCell = document.getElementById(`stock-margin-${sym}`);
-            if (smCell && pos.current_spot != null) {
-                const lots    = parseInt(smCell.dataset.lots    || 1);
-                const lotSize = parseInt(smCell.dataset.lotsize || 1);
-                const sm = pos.current_spot * lots * lotSize;
-                _totalStockMargin += sm;
-                smCell.innerHTML = `<span class="text-info">₹${Math.round(sm).toLocaleString('en-IN')}</span>`;
+            if (smCell) {
+                smCell.innerHTML = `<span class="text-muted small">—</span>`;
             }
 
             // Distance to short put
@@ -550,12 +564,6 @@ async function refreshShiftCost() {
                 <span ${cls}>${icon}${label}</span>
                 <span ${cls}> ₹${sign}${amt}</span>
                 <div style="font-size:0.68rem;color:#9aa8bc;">${typeStr} if shifted now</div>`;
-        }
-
-        // Update total stock margin summary card
-        const smCard = document.getElementById('stat-total-stock-margin');
-        if (smCard && _totalStockMargin > 0) {
-            smCard.innerHTML = `<span class="text-info">₹${Math.round(_totalStockMargin).toLocaleString('en-IN')}</span>`;
         }
 
     } catch(e) {
