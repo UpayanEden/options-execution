@@ -1378,6 +1378,11 @@ class CondorRunner:
 
         if expiry_type == "monthly":
             candidates = [exp for exp in candidates if self._is_monthly_expiry(exp)]
+        elif expiry_type == "weekly":
+            # NIFTY weekly contracts expire on Thursdays (weekday==3).
+            # Accept Tuesday/Wednesday too for holiday-shifted contracts
+            # (NSE moves the expiry back by 1-2 days when Thursday is a holiday).
+            candidates = [exp for exp in candidates if exp.weekday() in (1, 2, 3)]
 
         if not candidates:
             return None
