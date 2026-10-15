@@ -233,7 +233,7 @@
                         {% if alert_count > 0 %}
                         <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
                               style="font-size:0.65rem; transform:translate(-60%, 10%) !important;">
-                            {{ alert_count if alert_count < 100 else '99+' }}
+                            {{ alert_count }}
                         </span>
                         {% endif %}
                     </a>
@@ -435,7 +435,7 @@
                 link.style.position = 'relative';
                 link.appendChild(badge);
             }
-            badge.textContent = count < 100 ? count : '99+';
+            badge.textContent = count;
         } else if (badge) {
             badge.remove();
         }
