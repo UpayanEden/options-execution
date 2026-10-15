@@ -429,11 +429,18 @@ async function refreshAlertsData() {
     }
 }
 
-// Seed on DOM ready, then poll
+// Mark all current alerts as read when this page is opened
+function _markAlertsRead() {
+    localStorage.setItem('alertsLastRead', new Date().toISOString());
+    _updateNavBadge(0);  // immediately clear badge
+}
+
+// Seed on DOM ready, mark read, then poll
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', _seedSeenAlerts);
+    document.addEventListener('DOMContentLoaded', () => { _seedSeenAlerts(); _markAlertsRead(); });
 } else {
     _seedSeenAlerts();
+    _markAlertsRead();
 }
 setInterval(refreshAlertsData, 30000);
 </script>

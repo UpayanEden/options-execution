@@ -527,7 +527,9 @@
 
     async function _refreshAlertBadge() {
         try {
-            const resp = await fetch('/api/alerts?count_only=true', {cache: 'no-store'});
+            const since = localStorage.getItem('alertsLastRead') || '';
+            const url = '/api/alerts?count_only=true' + (since ? '&since=' + encodeURIComponent(since) : '');
+            const resp = await fetch(url, {cache: 'no-store'});
             const data = await resp.json();
             const count = data.count || 0;
             _updateNavBadge(count);
@@ -539,17 +541,15 @@
         } catch(e) { /* silent */ }
     }
 
-    // Seed shown keys on first load from server-rendered alert data
+    // Seed shown keys on first load and prime the badge from localStorage
     document.addEventListener('DOMContentLoaded', () => {
-        // Kick off initial fetch to prime _shownAlertKeys with currently-visible alerts
-        // (so we don't toast alerts that are already on the page)
         fetch('/api/alerts', {cache: 'no-store'}).then(r => r.json()).then(data => {
             for (const ev of (data.alerts || [])) {
                 _shownAlertKeys.add(_alertToastKey(ev));
             }
-            _lastAlertCount = (data.counts || {}).total || 0;
-            _updateNavBadge(_lastAlertCount);
         }).catch(() => {});
+        // Prime badge immediately using stored last-read time
+        _refreshAlertBadge();
     });
 
     // Start badge polling after 5s (give page time to load), then every 15s

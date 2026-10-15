@@ -77,8 +77,8 @@ def create_app() -> Flask:
             trading_mode = str(cfg_raw.get("mode", "paper")).lower()
         except Exception:
             trading_mode = "paper"
-        alert_count = _count_active_alerts()
-        return {"runner_running": running, "trading_mode": trading_mode, "alert_count": alert_count}
+        # Badge count is managed entirely by JS (reads localStorage 'alertsLastRead')
+        return {"runner_running": running, "trading_mode": trading_mode, "alert_count": 0}
 
     # ── Register routes ────────────────────────────────────────────────────
 
@@ -836,9 +836,15 @@ def create_app() -> Flask:
 
     @app.route("/api/alerts")
     def api_alerts():
-        """Return alerts JSON. Query param: count_only=true returns just the badge count."""
+        """Return alerts JSON. Query params: count_only=true, since=<ISO timestamp>."""
         if request.args.get("count_only") == "true":
-            return jsonify({"count": _count_active_alerts()})
+            since = request.args.get("since", "")
+            data = _load_alerts(limit=200)
+            if since:
+                count = sum(1 for a in data["alerts"] if (a.get("ts") or "") > since)
+            else:
+                count = data["counts"].get("total", 0)
+            return jsonify({"count": count})
         return jsonify(_load_alerts())
 
     @app.route("/api/logs")
