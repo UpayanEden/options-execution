@@ -37,6 +37,13 @@ from risk.kill_switch import KillSwitch
 
 IST = ZoneInfo("Asia/Kolkata")
 
+
+def _test_expiry() -> date:
+    """Return a Thursday ~30 days from today so weekly expiry filter passes."""
+    base = date.today() + timedelta(days=30)
+    return base + timedelta(days=(3 - base.weekday()) % 7)
+
+
 # ── PaperBroker fixture ────────────────────────────────────────────────────
 
 
@@ -69,7 +76,7 @@ class PaperBroker(BrokerAdapter):
     def _build_instruments(self) -> List[Dict[str, Any]]:
         """Build a synthetic instrument list for RELIANCE options."""
         instruments = []
-        expiry_date = date.today() + timedelta(days=30)
+        expiry_date = _test_expiry()
         base_strikes = [2500, 2550, 2594, 2600, 2650, 2700, 2750, 2800,
                         2850, 2900, 2950, 3000, 3006, 3050, 3100]
         token_base = 10000
@@ -393,7 +400,7 @@ class TestCondorExit:
 
     def _build_position(self, broker: PaperBroker) -> CondorPosition:
         """Helper to build a CondorPosition for exit tests."""
-        expiry = date.today() + timedelta(days=30)
+        expiry = _test_expiry()
         sp = broker.resolve_instrument("RELIANCE", "NFO", expiry, Decimal("2650"), "PE")
         lp = broker.resolve_instrument("RELIANCE", "NFO", expiry, Decimal("2594"), "PE")
         sc = broker.resolve_instrument("RELIANCE", "NFO", expiry, Decimal("2950"), "CE")
@@ -463,7 +470,7 @@ class TestCondorShift:
         runner._get_now_str = MagicMock(return_value="10:00")
 
         # Create initial position
-        expiry = date.today() + timedelta(days=30)
+        expiry = _test_expiry()
         sp = broker.resolve_instrument("RELIANCE", "NFO", expiry, Decimal("2650"), "PE")
         lp = broker.resolve_instrument("RELIANCE", "NFO", expiry, Decimal("2594"), "PE")
         sc = broker.resolve_instrument("RELIANCE", "NFO", expiry, Decimal("2950"), "CE")
@@ -498,7 +505,7 @@ class TestCondorShift:
         runner._get_spot = MagicMock(return_value=2810.0)
         runner._get_now_str = MagicMock(return_value="10:00")
 
-        expiry = date.today() + timedelta(days=30)
+        expiry = _test_expiry()
         sp = broker.resolve_instrument("RELIANCE", "NFO", expiry, Decimal("2650"), "PE")
         lp = broker.resolve_instrument("RELIANCE", "NFO", expiry, Decimal("2594"), "PE")
         sc = broker.resolve_instrument("RELIANCE", "NFO", expiry, Decimal("2950"), "CE")
@@ -525,7 +532,7 @@ class TestShiftMonitorTriggers:
 
     def _make_position(self, spot: float = 2800.0) -> CondorPosition:
         """Create a dummy CondorPosition for shift checks."""
-        expiry = date.today() + timedelta(days=30)
+        expiry = _test_expiry()
         broker = PaperBroker(spot=spot)
         sp = broker.resolve_instrument("RELIANCE", "NFO", expiry, Decimal("2650"), "PE")
         lp = broker.resolve_instrument("RELIANCE", "NFO", expiry, Decimal("2594"), "PE")

@@ -75,7 +75,7 @@
 
     <div class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center"
-             style="cursor:pointer;" onclick="toggleStockAlerts('stock-{{ sym | replace(' ','_') }}')">
+             style="cursor:pointer;" onclick="toggleStockAlerts('stock-ajax-{{ sym | replace(' ','_') }}')">
             <div class="d-flex align-items-center gap-2">
                 <span class="fw-bold fs-6">{{ sym or 'SYSTEM' }}</span>
                 <span class="badge bg-secondary">{{ sym_alerts | length }} alert{{ 's' if sym_alerts | length != 1 }}</span>
@@ -90,7 +90,7 @@
                 <i class="bi bi-chevron-down text-muted"></i>
             </div>
         </div>
-        <div id="stock-{{ sym | replace(' ','_') }}" class="table-responsive">
+        <div id="stock-ajax-{{ sym | replace(' ','_') }}" class="table-responsive">
             <table class="table table-hover mb-0 small">
                 <thead>
                     <tr>

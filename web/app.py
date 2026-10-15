@@ -1523,7 +1523,7 @@ def _load_alerts(limit: int = 200) -> Dict[str, Any]:
 def _count_active_alerts() -> int:
     """Return the count of alert-worthy events for the nav badge."""
     try:
-        data = _load_alerts(limit=500)
+        data = _load_alerts(limit=200)
         return data["counts"].get("total", 0)
     except Exception:
         return 0

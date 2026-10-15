@@ -587,12 +587,12 @@ class CondorRunner:
                 initial_bid=quotes_by_sym[inst.trading_symbol].bid,
                 initial_ask=quotes_by_sym[inst.trading_symbol].ask,
             )
-            broker_oid = self._place_order_safe(order)
+            self._trade_logger.log_order(order, EventType.ORDER_PLACED)
+            broker_oid = self._place_and_confirm(order)
             if broker_oid is None:
                 self._capital_manager.release(symbol)
                 return None
             order_ids.append(broker_oid)
-            self._trade_logger.log_order(order, EventType.ORDER_PLACED)
 
         time.sleep(_ORDER_SPACING_SECONDS)
 
@@ -613,14 +613,14 @@ class CondorRunner:
                 initial_bid=quotes_by_sym[inst.trading_symbol].bid,
                 initial_ask=quotes_by_sym[inst.trading_symbol].ask,
             )
-            broker_oid = self._place_order_safe(order)
+            self._trade_logger.log_order(order, EventType.ORDER_PLACED)
+            broker_oid = self._place_and_confirm(order)
             if broker_oid is None:
                 # Hedges placed but shorts failed — exit hedges
                 logger.error("short_order_failed_unwinding_hedges", extra={"symbol": symbol})
                 self._capital_manager.release(symbol)
                 return None
             order_ids.append(broker_oid)
-            self._trade_logger.log_order(order, EventType.ORDER_PLACED)
 
         # ── 12. Compute initial credit ─────────────────────────────────────
         initial_credit = (
