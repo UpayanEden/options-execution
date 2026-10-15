@@ -359,28 +359,36 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p class="mb-3">This will immediately halt all trading activity. The runner will
-                stop placing new orders and the shift monitor will cease all operations.</p>
+                <div class="alert alert-danger py-2 small mb-3">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                    <strong>WARNING:</strong> This will immediately <strong>exit all open positions</strong> on Zerodha
+                    and halt all trading. Fill confirmations will be obtained for each leg.
+                </div>
+                <p class="mb-2 text-light">Are you sure you want to <strong>exit all currently held positions</strong>?</p>
+                <ul class="small text-muted mb-3">
+                    <li>All open iron condor legs will be closed at market limit.</li>
+                    <li>The shift monitor and entry loop will stop immediately.</li>
+                    <li>Deactivate the kill switch manually to resume trading.</li>
+                </ul>
                 <div class="mb-3">
                     <label class="form-label text-muted small">Reason (optional)</label>
                     <input type="text" class="form-control bg-dark text-light border-secondary"
                            id="killSwitchReason" placeholder="e.g. Manual stop, market closed...">
                 </div>
-                <div class="alert alert-danger py-2 small mb-0">
-                    <i class="bi bi-info-circle me-1"></i>
-                    This action takes effect immediately. Deactivate manually to resume trading.
-                </div>
             </div>
             <div class="modal-footer border-danger">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel — Keep Positions Open</button>
                 <button type="button" class="btn btn-danger fw-bold"
                         onclick="confirmKillSwitch()">
-                    <i class="bi bi-stop-circle me-1"></i>ACTIVATE KILL SWITCH
+                    <i class="bi bi-stop-circle me-1"></i>YES — EXIT ALL &amp; ACTIVATE KILL SWITCH
                 </button>
             </div>
         </div>
     </div>
 </div>
+
+<!-- ── Alert Toast Container ──────────────────────────────────────────── -->
+<div id="alert-toast-container" style="position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;max-width:400px;"></div>
 
 <!-- ── Bootstrap 5 JS ─────────────────────────────────────────────────── -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
@@ -406,9 +414,149 @@
 
     async function confirmKillSwitch() {
         const reason = document.getElementById('killSwitchReason').value || 'Activated via web UI';
-        await toggleKillSwitch('activate', reason);
         bootstrap.Modal.getInstance(document.getElementById('killSwitchModal')).hide();
+        await toggleKillSwitch('activate', reason);
     }
+
+    // ── Alert badge live refresh ──────────────────────────────────────────
+    // Polls /api/alerts?count_only=true every 15 seconds and updates the nav badge
+    // without a full page reload. Resets the "99+" cap when count changes.
+    let _lastAlertCount = -1;
+
+    function _updateNavBadge(count) {
+        const link = document.querySelector('a[href="/alerts"]');
+        if (!link) return;
+        let badge = link.querySelector('.badge.bg-danger');
+        if (count > 0) {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger';
+                badge.style.cssText = 'font-size:0.65rem; transform:translate(-60%, 10%) !important;';
+                link.style.position = 'relative';
+                link.appendChild(badge);
+            }
+            badge.textContent = count < 100 ? count : '99+';
+        } else if (badge) {
+            badge.remove();
+        }
+    }
+
+    // ── Alert toast popup system ──────────────────────────────────────────
+    // Shows a dismissable toast per new alert event. Dismissed toasts are
+    // tracked in sessionStorage so they don't reappear within the session.
+
+    const _dismissedAlertKeys = new Set(
+        JSON.parse(sessionStorage.getItem('_dismissedAlerts') || '[]')
+    );
+
+    function _alertToastKey(ev) {
+        return (ev.ts || '') + '|' + (ev.event_type || '') + '|' + (ev.symbol || '');
+    }
+
+    function _showAlertToast(ev) {
+        const key = _alertToastKey(ev);
+        if (_dismissedAlertKeys.has(key)) return;
+
+        const container = document.getElementById('alert-toast-container');
+        if (!container) return;
+
+        const level = ev.level || 'ERROR';
+        const symbol = ev.symbol || 'SYSTEM';
+        const etype = ev.event_type || 'ALERT';
+        const ts = (ev.ts || '').substring(0, 19).replace('T', ' ');
+        const desc = ev.alert_description || ev.error || '';
+
+        const borderColor = level === 'CRITICAL' ? '#cc00cc' : level === 'ERROR' ? '#ff3d71' : '#ffaa00';
+
+        const toast = document.createElement('div');
+        toast.style.cssText = `background:#1a1d27;border:1px solid ${borderColor};border-radius:10px;padding:0.8rem 1rem;box-shadow:0 4px 20px rgba(0,0,0,0.6);position:relative;animation:slideInToast 0.3s ease;`;
+        toast.innerHTML = `
+            <button onclick="_dismissToast(this,'${CSS.escape(key)}')" title="Dismiss"
+                    style="position:absolute;top:0.4rem;right:0.5rem;background:none;border:none;color:#9aa8bc;font-size:1.1rem;cursor:pointer;line-height:1;">&times;</button>
+            <div style="font-size:0.72rem;color:#9aa8bc;">${ts}</div>
+            <div style="font-weight:700;color:${borderColor};font-size:0.85rem;">${symbol} — ${etype}</div>
+            ${desc ? `<div style="font-size:0.78rem;color:#e0e0e0;margin-top:0.2rem;">${String(desc).substring(0,120)}</div>` : ''}
+            <div style="font-size:0.7rem;color:#9aa8bc;margin-top:0.3rem;">Click &times; to dismiss (won't show again this session)</div>
+        `;
+        toast.dataset.alertKey = key;
+        container.appendChild(toast);
+
+        // Auto-remove after 60 seconds if not dismissed
+        setTimeout(() => { if (toast.parentNode) toast.remove(); }, 60000);
+    }
+
+    function _dismissToast(btn, key) {
+        const toast = btn.closest('[data-alert-key]');
+        if (toast) toast.remove();
+        _dismissedAlertKeys.add(key);
+        try { sessionStorage.setItem('_dismissedAlerts', JSON.stringify([..._dismissedAlertKeys])); } catch(e) {}
+    }
+
+    // Add CSS animation for toast slide-in
+    (function() {
+        const style = document.createElement('style');
+        style.textContent = '@keyframes slideInToast{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}';
+        document.head.appendChild(style);
+    })();
+
+    // Track alert keys we've already seen (to only toast truly new events)
+    const _shownAlertKeys = new Set(
+        JSON.parse(sessionStorage.getItem('_shownAlerts') || '[]')
+    );
+
+    async function _fetchNewAlertsForToast() {
+        try {
+            const resp = await fetch('/api/alerts', {cache: 'no-store'});
+            const data = await resp.json();
+            const alerts = data.alerts || [];
+            let newCount = 0;
+            for (const ev of alerts) {
+                const key = _alertToastKey(ev);
+                if (!_shownAlertKeys.has(key) && !_dismissedAlertKeys.has(key)) {
+                    _showAlertToast(ev);
+                    _shownAlertKeys.add(key);
+                    newCount++;
+                    if (newCount >= 5) break; // max 5 toasts at once
+                }
+            }
+            // Persist shown keys (keep last 200 to avoid unbounded growth)
+            const allKeys = [..._shownAlertKeys].slice(-200);
+            try { sessionStorage.setItem('_shownAlerts', JSON.stringify(allKeys)); } catch(e) {}
+        } catch(e) { /* silent */ }
+    }
+
+    async function _refreshAlertBadge() {
+        try {
+            const resp = await fetch('/api/alerts?count_only=true', {cache: 'no-store'});
+            const data = await resp.json();
+            const count = data.count || 0;
+            _updateNavBadge(count);
+            if (_lastAlertCount >= 0 && count > _lastAlertCount) {
+                // New alerts arrived — fetch and show toasts
+                _fetchNewAlertsForToast();
+            }
+            _lastAlertCount = count;
+        } catch(e) { /* silent */ }
+    }
+
+    // Seed shown keys on first load from server-rendered alert data
+    document.addEventListener('DOMContentLoaded', () => {
+        // Kick off initial fetch to prime _shownAlertKeys with currently-visible alerts
+        // (so we don't toast alerts that are already on the page)
+        fetch('/api/alerts', {cache: 'no-store'}).then(r => r.json()).then(data => {
+            for (const ev of (data.alerts || [])) {
+                _shownAlertKeys.add(_alertToastKey(ev));
+            }
+            _lastAlertCount = (data.counts || {}).total || 0;
+            _updateNavBadge(_lastAlertCount);
+        }).catch(() => {});
+    });
+
+    // Start badge polling after 5s (give page time to load), then every 15s
+    setTimeout(() => {
+        _refreshAlertBadge();
+        setInterval(_refreshAlertBadge, 15000);
+    }, 5000);
 
     // Show/hide live warning when mode changes
     async function startSystem() {

@@ -1460,6 +1460,9 @@ _ALERT_EVENT_TYPES = {
     "DAILY_LOSS_LIMIT_BREACHED",
     "ENTRY_FAILED",
     "EXIT_FAILED",
+    "FUNDS_CHECK_FAILED",
+    "SHIFT_SKIPPED_LOW_PREMIUM",
+    "SHIFT_BLOCKED_TIME",
     "ERROR",
 }
 
@@ -1472,6 +1475,9 @@ _ALERT_DESCRIPTIONS = {
     "DAILY_LOSS_LIMIT_BREACHED": "Daily loss limit breached",
     "ENTRY_FAILED":              "Strategy entry failed",
     "EXIT_FAILED":               "Exit order failed",
+    "FUNDS_CHECK_FAILED":        "Zerodha funds check failed before trade",
+    "SHIFT_SKIPPED_LOW_PREMIUM": "Shift skipped — post-shift premium below 5%; exiting instead",
+    "SHIFT_BLOCKED_TIME":        "Shift blocked — past 3:20 PM IST cutoff",
     "ERROR":                     "Unhandled system error",
 }
 

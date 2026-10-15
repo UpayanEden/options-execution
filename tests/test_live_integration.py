@@ -240,6 +240,7 @@ def _make_live_config() -> LiveConfig:
                 call_dist_pct=4.0,
                 premium_pct=0.4,
                 enabled=True,
+                expiry_type="weekly",  # test instruments use today+30d which isn't a monthly expiry
             )
         ],
         strategy=StrategyParams(
@@ -299,8 +300,9 @@ class TestCondorEntry:
         """A valid entry should return a CondorPosition with all four legs filled."""
         runner, broker, _ = _make_runner(spot=2800.0, tmp_path=tmp_path)
 
-        # Patch _get_spot to return a deterministic value
+        # Patch _get_spot and fix time so test passes at any hour
         runner._get_spot = MagicMock(return_value=2800.0)
+        runner._get_now_str = MagicMock(return_value="10:00")
 
         stock_cfg = runner._config.stocks[0]
         pos = runner.enter_condor(stock_cfg)
@@ -323,6 +325,7 @@ class TestCondorEntry:
         """Initial credit should be set as net premium received."""
         runner, broker, _ = _make_runner(spot=2800.0, tmp_path=tmp_path)
         runner._get_spot = MagicMock(return_value=2800.0)
+        runner._get_now_str = MagicMock(return_value="10:00")
         pos = runner.enter_condor(runner._config.stocks[0])
         assert pos is not None
         # Credit = short_premiums - long_premiums (can be negative in some market conditions)
@@ -332,6 +335,7 @@ class TestCondorEntry:
         """Entering a condor should allocate capital via CapitalManager."""
         runner, broker, _ = _make_runner(spot=2800.0, tmp_path=tmp_path)
         runner._get_spot = MagicMock(return_value=2800.0)
+        runner._get_now_str = MagicMock(return_value="10:00")
         pos = runner.enter_condor(runner._config.stocks[0])
         assert pos is not None
         allocated = runner._capital_manager.get_allocated()
@@ -453,9 +457,10 @@ class TestCondorShift:
     """Integration tests for CondorRunner.shift_condor()."""
 
     def test_shift_creates_new_position(self, tmp_path):
-        """shift_condor should close the old position and open a new one."""
+        """shift_condor should mutate the position in-place and set shift_count=1."""
         runner, broker, _ = _make_runner(spot=2800.0, tmp_path=tmp_path)
         runner._get_spot = MagicMock(return_value=2810.0)
+        runner._get_now_str = MagicMock(return_value="10:00")
 
         # Create initial position
         expiry = date.today() + timedelta(days=30)
@@ -480,15 +485,18 @@ class TestCondorShift:
         runner._positions.append(old_pos)
         runner._capital_manager.allocate("RELIANCE", 50_000)
 
-        new_pos = runner.shift_condor(old_pos)
-        assert new_pos is not None
-        assert new_pos.shift_count == 1
-        assert old_pos.state == "CLOSED"
+        with patch("live.condor_runner.time.sleep"):
+            runner.shift_condor(old_pos, "CALL")
+
+        # shift_condor mutates pos in-place and returns None; state stays OPEN
+        assert old_pos.shift_count == 1
+        assert old_pos.state == "OPEN"
 
     def test_shift_increments_shift_count(self, tmp_path):
         """shift_condor should increment the shift_count by 1."""
         runner, broker, _ = _make_runner(spot=2800.0, tmp_path=tmp_path)
         runner._get_spot = MagicMock(return_value=2810.0)
+        runner._get_now_str = MagicMock(return_value="10:00")
 
         expiry = date.today() + timedelta(days=30)
         sp = broker.resolve_instrument("RELIANCE", "NFO", expiry, Decimal("2650"), "PE")
@@ -503,9 +511,10 @@ class TestCondorShift:
         runner._positions.append(old_pos)
         runner._capital_manager.allocate("RELIANCE", 50_000)
 
-        new_pos = runner.shift_condor(old_pos)
-        assert new_pos is not None
-        assert new_pos.shift_count == 3
+        with patch("live.condor_runner.time.sleep"):
+            runner.shift_condor(old_pos, "CALL")
+
+        assert old_pos.shift_count == 3
 
 
 # ── ShiftMonitor trigger tests ─────────────────────────────────────────────
@@ -539,7 +548,6 @@ class TestShiftMonitorTriggers:
             config=config,
             logger_=tl,
             on_shift_cb=MagicMock(),
-            on_take_profit_cb=MagicMock(),
         )
         pos = self._make_position(2800.0)
         should_act, reason = monitor._check_position(pos)
@@ -558,7 +566,6 @@ class TestShiftMonitorTriggers:
             config=config,
             logger_=tl,
             on_shift_cb=MagicMock(),
-            on_take_profit_cb=MagicMock(),
         )
         pos = self._make_position(2800.0)
         # Mock _get_current_spot to return the low spot so the shift triggers
@@ -580,7 +587,6 @@ class TestShiftMonitorTriggers:
             config=config,
             logger_=tl,
             on_shift_cb=MagicMock(),
-            on_take_profit_cb=MagicMock(),
         )
         pos = self._make_position(2800.0)
         # Mock _get_current_spot to return the high spot so the shift triggers
@@ -589,13 +595,10 @@ class TestShiftMonitorTriggers:
         assert should_act, f"Should trigger SHIFT_CALL at spot={spot}"
         assert "SHIFT_CALL" in reason
 
-    def test_take_profit_triggers_at_threshold(self, tmp_path):
-        """Take-profit should fire when current cost <= (1 - premium_pct) × initial_credit."""
+    def test_dte_exit_triggers_near_expiry(self, tmp_path):
+        """DTE_EXIT should fire when position is within dte_exit days of expiry."""
         config = _make_live_config()
-        # initial_credit=20, premium_pct=0.4 → threshold = 0.6 × 20 = 12
-        # Need current cost ≤ 12 → set very low option prices
-        spot = 2800.0
-        broker = PaperBroker(spot=spot)
+        broker = PaperBroker(spot=2800.0)
         tl = TradeLogger(log_dir=str(tmp_path), symbol="RELIANCE")
         monitor = ShiftMonitor(
             broker=broker,
@@ -603,19 +606,15 @@ class TestShiftMonitorTriggers:
             config=config,
             logger_=tl,
             on_shift_cb=MagicMock(),
-            on_take_profit_cb=MagicMock(),
         )
+        # Build a position expiring in 1 day (below dte_exit threshold of 2)
         pos = self._make_position(2800.0)
-        pos.initial_credit = 20.0
-
-        # Mock _compute_current_cost to return a value below the threshold
-        monitor._compute_current_cost = MagicMock(return_value=10.0)
-        # Use real spot from entry
-        monitor._get_current_spot = MagicMock(return_value=2800.0)
+        # Override expiry to be imminent
+        pos.expiry = date.today() + timedelta(days=1)
 
         should_act, reason = monitor._check_position(pos)
-        assert should_act, f"Take-profit should fire. Reason: {reason}"
-        assert "TAKE_PROFIT" in reason
+        assert should_act, f"DTE_EXIT should fire for expiry in 1 day. Reason: {reason}"
+        assert "DTE_EXIT" in reason
 
 
 # ── Capital manager tests ──────────────────────────────────────────────────

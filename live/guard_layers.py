@@ -262,8 +262,8 @@ def _quote_guard(ctx: GuardContext) -> GuardResult:
         # Quote age
         age_seconds = (now - quote.timestamp).total_seconds()
         data[f"{sym}_age_s"] = round(age_seconds, 1)
-        if age_seconds > 120:
-            failures.append(f"{sym}: quote age {age_seconds:.1f}s > 120s")
+        if age_seconds > 10:
+            failures.append(f"{sym}: quote age {age_seconds:.1f}s > 10s")
             continue  # stale quote; remaining checks unreliable
 
         # Bid/ask positivity
@@ -286,11 +286,14 @@ def _quote_guard(ctx: GuardContext) -> GuardResult:
                 f"{sym} (short): spread {quote.spread_pct:.2f}% > 25% of mid"
             )
 
-        # LTP vs mid — logged for visibility only; not a blocking check
-        # We execute on bid/ask (top-of-book), so a stale LTP is not a risk.
+        # LTP vs mid — block if deviation > 5% (indicates stale or crossed market)
         if mid > 0:
             ltp_deviation = abs(float(quote.ltp) - float(mid)) / float(mid) * 100
             data[f"{sym}_ltp_deviation_pct"] = round(ltp_deviation, 2)
+            if ltp_deviation > 5.0:
+                failures.append(
+                    f"{sym}: LTP {quote.ltp} deviates {ltp_deviation:.1f}% from mid {mid:.2f} (>5%)"
+                )
 
         # Short leg minimum premium
         if is_short and ctx.spot > 0:

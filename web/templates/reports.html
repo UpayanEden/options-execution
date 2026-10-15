@@ -203,11 +203,13 @@
                         <th>Symbol</th>
                         <th class="text-center">Side</th>
                         <th class="text-end">Spot</th>
+                        <th>Old Strikes</th>
+                        <th>New Strikes</th>
                         <th class="text-end">Close Short</th>
                         <th class="text-end">Close Long</th>
                         <th class="text-end">Close Debit</th>
-                        <th class="text-end">New Short</th>
-                        <th class="text-end">New Long</th>
+                        <th class="text-end">New Short ₹</th>
+                        <th class="text-end">New Long ₹</th>
                         <th class="text-end">New Credit</th>
                         <th class="text-end">Shift P&amp;L (₹)</th>
                     </tr>
@@ -218,6 +220,8 @@
                 {% set close_debit = ev.get("close_debit", 0) | float %}
                 {% set new_credit = ev.get("new_credit", 0) | float %}
                 {% set shift_pnl = ev.get("shift_pnl_total", 0) | float %}
+                {% set old_str = ev.get("old_strikes") or {} %}
+                {% set new_str = ev.get("new_strikes") or {} %}
                 <tr>
                     <td class="timestamp-cell">{{ ev.get("ts", "")[:19] }}</td>
                     <td class="fw-semibold">{{ ev.get("symbol", "—") }}</td>
@@ -235,12 +239,30 @@
                         {% endif %}
                     </td>
                     <td class="text-end">{{ ev.get("spot", "—") }}</td>
-                    <td class="text-end text-danger">{{ "%.4f" | format(ev.get("close_short_price", 0) | float) if ev.get("close_short_price") else "—" }}</td>
-                    <td class="text-end pnl-positive">{{ "%.4f" | format(ev.get("close_long_price", 0) | float) if ev.get("close_long_price") else "—" }}</td>
-                    <td class="text-end text-danger">{{ "%.4f" | format(close_debit) if ev.get("close_debit") else "—" }}</td>
-                    <td class="text-end pnl-positive">{{ "%.4f" | format(ev.get("new_short_price", 0) | float) if ev.get("new_short_price") else "—" }}</td>
-                    <td class="text-end text-danger">{{ "%.4f" | format(ev.get("new_long_price", 0) | float) if ev.get("new_long_price") else "—" }}</td>
-                    <td class="text-end pnl-positive">{{ "%.4f" | format(new_credit) if ev.get("new_credit") else "—" }}</td>
+                    <td style="white-space:nowrap;">
+                        {% if old_str %}
+                        <span class="strike-pill text-danger" title="Short Put">SP {{ old_str.get("short_put", "—") }}</span>
+                        <span class="strike-pill text-success" title="Short Call">SC {{ old_str.get("short_call", "—") }}</span>
+                        <span class="strike-pill text-muted small" title="Long Put / Long Call">
+                            LP {{ old_str.get("long_put", "—") }} / LC {{ old_str.get("long_call", "—") }}
+                        </span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td style="white-space:nowrap;">
+                        {% if new_str %}
+                        <span class="strike-pill text-danger" title="Short Put">SP {{ new_str.get("short_put", "—") }}</span>
+                        <span class="strike-pill text-success" title="Short Call">SC {{ new_str.get("short_call", "—") }}</span>
+                        <span class="strike-pill text-muted small" title="Long Put / Long Call">
+                            LP {{ new_str.get("long_put", "—") }} / LC {{ new_str.get("long_call", "—") }}
+                        </span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td class="text-end text-danger">{{ "%.2f" | format(ev.get("close_short_price", 0) | float) if ev.get("close_short_price") else "—" }}</td>
+                    <td class="text-end pnl-positive">{{ "%.2f" | format(ev.get("close_long_price", 0) | float) if ev.get("close_long_price") else "—" }}</td>
+                    <td class="text-end text-danger">{{ "%.2f" | format(close_debit) if ev.get("close_debit") else "—" }}</td>
+                    <td class="text-end pnl-positive">{{ "%.2f" | format(ev.get("new_short_price", 0) | float) if ev.get("new_short_price") else "—" }}</td>
+                    <td class="text-end text-danger">{{ "%.2f" | format(ev.get("new_long_price", 0) | float) if ev.get("new_long_price") else "—" }}</td>
+                    <td class="text-end pnl-positive">{{ "%.2f" | format(new_credit) if ev.get("new_credit") else "—" }}</td>
                     <td class="text-end fw-semibold {% if shift_pnl >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
                         {% if ev.get("shift_pnl_total") is not none and ev.get("shift_pnl_total") != 0 %}
                         ₹{{ "{:,.2f}".format(shift_pnl) }}

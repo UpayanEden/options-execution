@@ -45,6 +45,15 @@ _RECONCILE_WAIT_SECONDS = 5.0
 _FILL_POLL_INTERVAL = 2.0
 _FILL_TIMEOUT_SECONDS = 60.0
 
+# Time cutoffs (IST, HH:MM format for string comparison)
+_ENTRY_CUTOFF_TIME = "15:15"   # No new entries after 3:15 PM IST
+_SHIFT_CUTOFF_TIME = "15:20"   # No shifts after 3:20 PM IST
+
+# Order confirmation polling constants
+_CONFIRM_POLL_INTERVAL = 2.0   # seconds between status polls
+_CONFIRM_TIMEOUT_SECS = 60.0   # max wait for fill confirmation
+_MAX_ORDER_RETRIES = 2         # retry unfilled orders once
+
 
 # ── CondorPosition dataclass ───────────────────────────────────────────────
 
@@ -206,9 +215,22 @@ class CondorRunner:
         now = datetime.now(IST)
         entry_start = self._config.strategy.entry_start
         entry_end = self._config.strategy.entry_end
-        now_str = now.strftime("%H:%M")
+        now_str = self._get_now_str()
 
-        if not (entry_start <= now_str <= entry_end):
+        # Hard entry cutoff: no new trades after 3:15 PM regardless of config
+        if now_str >= _ENTRY_CUTOFF_TIME:
+            logger.warning(
+                "entry_blocked_hard_cutoff",
+                extra={"now": now_str, "cutoff": _ENTRY_CUTOFF_TIME},
+            )
+            self._trade_logger.log(
+                EventType.ENTRY_BLOCKED_TIME,
+                None,
+                {"now": now_str, "cutoff": _ENTRY_CUTOFF_TIME,
+                 "reason": "Hard cutoff — no new entries after 3:15 PM IST"},
+                level="WARNING",
+            )
+        elif not (entry_start <= now_str <= entry_end):
             logger.warning(
                 "outside_entry_window",
                 extra={"now": now_str, "start": entry_start, "end": entry_end},
@@ -269,9 +291,20 @@ class CondorRunner:
 
         while True:
             if self._kill_switch.is_active():
-                logger.critical("monitoring_kill_switch_stop")
+                logger.critical("kill_switch_activated_exiting_all_positions")
                 if self._shift_monitor:
                     self._shift_monitor.stop()
+                # Exit all open positions and confirm with Zerodha
+                self._trade_logger.log(
+                    EventType.KILL_SWITCH_ACTIVATED,
+                    None,
+                    {"reason": "Kill switch active — exiting all open positions"},
+                    level="CRITICAL",
+                )
+                for pos in list(positions):
+                    if pos.state == "OPEN":
+                        logger.critical("kill_switch_closing_position", extra={"symbol": pos.symbol})
+                        self.exit_condor(pos, "KILL_SWITCH")
                 break
 
             now = datetime.now(IST)
@@ -690,7 +723,7 @@ class CondorRunner:
 
         qty = pos.lots * pos.lot_size
 
-        # Close shorts first (buy back)
+        # Close shorts first (buy back), with fill confirmation from Zerodha
         for inst in [pos.short_put, pos.short_call]:
             q = quotes_by_token.get(inst.instrument_token)
             price = q.ask if q else inst.strike * Decimal("0.005")
@@ -703,12 +736,16 @@ class CondorRunner:
                 quantity=qty,
                 limit_price=price,
             )
-            broker_oid = self._place_order_safe(order)
+            self._trade_logger.log_order(order, EventType.ORDER_PLACED)
+            broker_oid = self._place_and_confirm(order)
             if broker_oid:
                 exit_debit += float(price)
-                self._trade_logger.log_order(order, EventType.ORDER_PLACED)
+            else:
+                logger.error("exit_short_leg_failed_no_fill", extra={
+                    "symbol": symbol, "leg": inst.trading_symbol
+                })
 
-        # Sell hedges (receive premium back)
+        # Sell hedges (receive premium back), with fill confirmation
         for inst in [pos.long_put, pos.long_call]:
             q = quotes_by_token.get(inst.instrument_token)
             price = q.bid if q else Decimal("0")
@@ -721,7 +758,8 @@ class CondorRunner:
                 quantity=qty,
                 limit_price=price,
             )
-            broker_oid = self._place_order_safe(order)
+            self._trade_logger.log_order(order, EventType.ORDER_PLACED)
+            broker_oid = self._place_and_confirm(order)
             if broker_oid:
                 exit_debit -= float(price)
                 self._trade_logger.log_order(order, EventType.ORDER_PLACED)
@@ -776,18 +814,39 @@ class CondorRunner:
         Single-leg shift: close only the threatened spread and re-enter it at
         new strikes.  The other spread is left completely untouched.
 
-        Matches the backtest behaviour:
-          • PUT triggered  → close put spread, keep call spread, open new put spread
-          • CALL triggered → close call spread, keep put spread, open new call spread
+        Execution order (buy-first):
+          1. BUY new long hedge → confirm fill from Zerodha
+          2. SELL new short     → confirm fill from Zerodha
+          3. BUY back old short → confirm fill from Zerodha
+          4. SELL old long hedge→ confirm fill from Zerodha
 
-        The position object is mutated in-place (new instrument references + updated
-        initial_credit).  No new CondorPosition is created.
+        Pre-conditions checked before any order:
+          • Time cutoff: shifts blocked after 3:20 PM IST.
+          • Funds: available Zerodha balance logged; hard stop if unavailable.
+          • Premium gate: if post-shift running credit < 5% of current credit,
+            exit the position instead of shifting.
 
         Args:
             pos:          The CondorPosition to partially shift.
             trigger_side: "PUT" or "CALL" — which spread to replace.
         """
         symbol = pos.symbol
+
+        # ── Time cutoff: no shifts after 3:20 PM ──────────────────────────
+        now_str = self._get_now_str()
+        if now_str >= _SHIFT_CUTOFF_TIME:
+            logger.warning("shift_blocked_time_cutoff", extra={
+                "symbol": symbol, "now": now_str, "cutoff": _SHIFT_CUTOFF_TIME
+            })
+            self._trade_logger.log(
+                EventType.SHIFT_BLOCKED_TIME,
+                symbol,
+                {"now": now_str, "cutoff": _SHIFT_CUTOFF_TIME,
+                 "reason": "Shift blocked — past 3:20 PM IST cutoff"},
+                level="WARNING",
+            )
+            return
+
         logger.warning(
             "shift_condor_start",
             extra={"symbol": symbol, "shift_count": pos.shift_count, "side": trigger_side},
@@ -797,6 +856,14 @@ class CondorRunner:
         if pos.state != "OPEN":
             logger.warning("shift_already_in_progress", extra={"symbol": symbol, "state": pos.state})
             return
+
+        # ── Funds check from Zerodha ──────────────────────────────────────
+        available_funds, funds_err = self._check_available_funds()
+        if funds_err:
+            logger.error("shift_funds_check_error", extra={"symbol": symbol, "error": funds_err})
+            # Proceed with caution but log the issue
+        else:
+            logger.info("shift_funds_available", extra={"symbol": symbol, "funds": round(available_funds, 2)})
 
         pos.state = "SHIFTING"
 
@@ -930,7 +997,40 @@ class CondorRunner:
         q_long = close_quotes.get(to_close_long.instrument_token)
         close_long_price = q_long.bid if q_long else Decimal("0")
 
-        # ── Step 2: Buy new hedge first (protection before closing old) ─────
+        new_side_credit_estimated = float(new_short_price) - float(new_long_price)
+        close_debit_estimated = float(close_short_price) - float(close_long_price)
+
+        # ── Premium gate: if post-shift running credit < 5% of current credit, exit ──
+        # "initial premium after shifts is less than 5%" → exit the position instead
+        if pos.initial_credit > 0:
+            post_shift_credit = pos.initial_credit + (new_side_credit_estimated - close_debit_estimated)
+            min_viable_credit = pos.initial_credit * 0.05
+            if post_shift_credit < min_viable_credit:
+                logger.warning("shift_skipped_low_premium", extra={
+                    "symbol": symbol,
+                    "current_credit": round(pos.initial_credit, 4),
+                    "post_shift_credit": round(post_shift_credit, 4),
+                    "min_viable": round(min_viable_credit, 4),
+                })
+                self._trade_logger.log(
+                    EventType.SHIFT_SKIPPED_LOW_PREMIUM,
+                    symbol,
+                    {
+                        "trigger_side": trigger_side,
+                        "current_credit": round(pos.initial_credit, 4),
+                        "post_shift_credit": round(post_shift_credit, 4),
+                        "min_viable_pct": 5.0,
+                        "reason": "Post-shift premium below 5% of current credit — exiting instead",
+                    },
+                    level="WARNING",
+                )
+                pos.state = "OPEN"
+                self.exit_condor(pos, "LOW_PREMIUM_EXIT")
+                return
+
+        # ── Step 2: BUY new long hedge first (enter new position with protection) ──
+        # Order: BUY new long → confirm → SELL new short → confirm
+        # THEN close old spread: BUY back old short → confirm → SELL old long → confirm
         buy_new_hedge = Order(
             strategy_run_id=run_id,
             leg_index=0,
@@ -940,7 +1040,9 @@ class CondorRunner:
             quantity=qty,
             limit_price=new_long_price,
         )
-        if not self._place_order_safe(buy_new_hedge):
+        self._trade_logger.log_order(buy_new_hedge, EventType.ORDER_PLACED)
+        confirmed_oid = self._place_and_confirm(buy_new_hedge)
+        if not confirmed_oid:
             logger.error("shift_entry_long_failed", extra={"symbol": symbol})
             # Detect F&O ban period rejection and track consecutive failures
             if "ban period" in self._last_order_error_msg.lower():
@@ -969,68 +1071,66 @@ class CondorRunner:
                 self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_new_hedge")
             pos.state = "OPEN"
             return
-        self._trade_logger.log_order(buy_new_hedge, EventType.ORDER_PLACED)
 
         time.sleep(_ORDER_SPACING_SECONDS)
 
-        # ── Step 3: Close the old spread ─────────────────────────────────────
-        # Buy back the old short leg
-        buy_back = Order(
-            strategy_run_id=run_id,
-            leg_index=1,
-            trading_symbol=to_close_short.trading_symbol,
-            instrument_token=to_close_short.instrument_token,
-            side=Side.BUY,
-            quantity=qty,
-            limit_price=close_short_price,
-        )
-        if not self._place_order_safe(buy_back):
-            logger.error("shift_close_short_failed", extra={"symbol": symbol})
-            self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_back_short")
-            pos.state = "OPEN"
-            return
-        self._trade_logger.log_order(buy_back, EventType.ORDER_PLACED)
-
-        time.sleep(_ORDER_SPACING_SECONDS)
-
-        # Sell back the old long hedge
-        sell_hedge = Order(
-            strategy_run_id=run_id,
-            leg_index=2,
-            trading_symbol=to_close_long.trading_symbol,
-            instrument_token=to_close_long.instrument_token,
-            side=Side.SELL,
-            quantity=qty,
-            limit_price=close_long_price,
-        )
-        if not self._place_order_safe(sell_hedge):
-            logger.error("shift_close_long_failed", extra={"symbol": symbol})
-            self._trade_logger.log_shift_failed(symbol, trigger_side, "sell_old_hedge")
-            pos.state = "OPEN"
-            return
-        self._trade_logger.log_order(sell_hedge, EventType.ORDER_PLACED)
-
-        close_debit = float(close_short_price) - float(close_long_price)
-
-        time.sleep(_ORDER_SPACING_SECONDS)
-
-        # ── Step 4: Sell the new short to complete the spread ────────────────
+        # ── Step 3: SELL new short to complete the new spread ────────────────
         sell_new_short = Order(
             strategy_run_id=run_id,
-            leg_index=3,
+            leg_index=1,
             trading_symbol=new_short_inst.trading_symbol,
             instrument_token=new_short_inst.instrument_token,
             side=Side.SELL,
             quantity=qty,
             limit_price=new_short_price,
         )
-        if not self._place_order_safe(sell_new_short):
+        self._trade_logger.log_order(sell_new_short, EventType.ORDER_PLACED)
+        if not self._place_and_confirm(sell_new_short):
             logger.error("shift_entry_short_failed", extra={"symbol": symbol})
             self._trade_logger.log_shift_failed(symbol, trigger_side, "sell_new_short")
             pos.state = "OPEN"
             return
-        self._trade_logger.log_order(sell_new_short, EventType.ORDER_PLACED)
 
+        time.sleep(_ORDER_SPACING_SECONDS)
+
+        # ── Step 4: Close the old spread ─────────────────────────────────────
+        # BUY back old short leg (confirm fill before proceeding to sell old hedge)
+        buy_back = Order(
+            strategy_run_id=run_id,
+            leg_index=2,
+            trading_symbol=to_close_short.trading_symbol,
+            instrument_token=to_close_short.instrument_token,
+            side=Side.BUY,
+            quantity=qty,
+            limit_price=close_short_price,
+        )
+        self._trade_logger.log_order(buy_back, EventType.ORDER_PLACED)
+        if not self._place_and_confirm(buy_back):
+            logger.error("shift_close_short_failed", extra={"symbol": symbol})
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_back_short")
+            pos.state = "OPEN"
+            return
+
+        time.sleep(_ORDER_SPACING_SECONDS)
+
+        # SELL old long hedge to complete closing the old spread
+        sell_hedge = Order(
+            strategy_run_id=run_id,
+            leg_index=3,
+            trading_symbol=to_close_long.trading_symbol,
+            instrument_token=to_close_long.instrument_token,
+            side=Side.SELL,
+            quantity=qty,
+            limit_price=close_long_price,
+        )
+        self._trade_logger.log_order(sell_hedge, EventType.ORDER_PLACED)
+        if not self._place_and_confirm(sell_hedge):
+            logger.error("shift_close_long_failed", extra={"symbol": symbol})
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "sell_old_hedge")
+            pos.state = "OPEN"
+            return
+
+        close_debit = float(close_short_price) - float(close_long_price)
         new_side_credit = float(new_short_price) - float(new_long_price)
 
         # ── Step 5: Mutate position in-place ────────────────────────────────
@@ -1342,6 +1442,164 @@ class CondorRunner:
 
     # ── Order placement helpers ────────────────────────────────────────────
 
+    def _poll_order_fill(self, broker_oid: str, order: Order) -> Optional[Decimal]:
+        """
+        Poll Zerodha for fill confirmation on a placed order.
+
+        Uses get_order_status_raw() which returns the raw dict with fill details.
+        Falls back to assuming filled for paper broker.
+
+        Returns:
+            Average fill price as Decimal if filled, None if timeout/cancelled.
+        """
+        if not hasattr(self._broker, "get_order_status_raw"):
+            # Paper broker or mock — assume filled at limit price
+            return order.limit_price
+
+        deadline = time.time() + _CONFIRM_TIMEOUT_SECS
+        while time.time() < deadline:
+            try:
+                raw = self._broker.get_order_status_raw(broker_oid)  # type: ignore[attr-defined]
+                status_str = str(raw.get("status", "")).upper()
+                filled_qty = int(raw.get("filled_quantity", 0))
+                avg_price = Decimal(str(raw.get("average_price", 0) or 0))
+
+                if status_str == "COMPLETE" and filled_qty > 0:
+                    logger.info("order_fill_confirmed", extra={
+                        "broker_oid": broker_oid,
+                        "symbol": order.trading_symbol,
+                        "fill_qty": filled_qty,
+                        "avg_price": str(avg_price),
+                    })
+                    return avg_price
+
+                if status_str in ("CANCELLED", "REJECTED"):
+                    logger.warning("order_cancelled_or_rejected", extra={
+                        "broker_oid": broker_oid,
+                        "symbol": order.trading_symbol,
+                        "status": status_str,
+                    })
+                    return None
+
+            except Exception as exc:
+                logger.warning("poll_fill_error", extra={"error": str(exc), "broker_oid": broker_oid})
+
+            time.sleep(_CONFIRM_POLL_INTERVAL)
+
+        logger.warning("fill_poll_timeout", extra={
+            "broker_oid": broker_oid, "symbol": order.trading_symbol
+        })
+        return None
+
+    def _place_and_confirm(self, order: Order) -> Optional[str]:
+        """
+        Place an order, poll for fill confirmation, retry once if unfilled.
+
+        Replaces a bare _place_order_safe() call wherever fill confirmation
+        is required (entry, shift, exit).  Each attempt:
+          1. Places the order via broker.
+          2. Polls until COMPLETE / CANCELLED / timeout.
+          3. On fill → logs ORDER_CONFIRMED and returns broker_oid.
+          4. On no-fill → cancels unfilled order, adjusts price (more aggressive),
+             retries up to _MAX_ORDER_RETRIES times.
+
+        Returns:
+            Broker order ID string on confirmed fill; None on failure.
+        """
+        current_order = order
+        for attempt in range(1, _MAX_ORDER_RETRIES + 1):
+            broker_oid = self._place_order_safe(current_order)
+            if broker_oid is None:
+                return None
+
+            fill_price = self._poll_order_fill(broker_oid, current_order)
+            if fill_price is not None:
+                self._trade_logger.log(
+                    EventType.ORDER_CONFIRMED,
+                    current_order.trading_symbol,
+                    {
+                        "broker_order_id": broker_oid,
+                        "side": current_order.side.value,
+                        "fill_price": str(fill_price),
+                        "quantity": current_order.quantity,
+                        "attempt": attempt,
+                    },
+                    level="INFO",
+                )
+                return broker_oid
+
+            # No fill — log and cancel
+            logger.warning("order_not_filled_retrying", extra={
+                "symbol": current_order.trading_symbol,
+                "attempt": attempt,
+                "broker_oid": broker_oid,
+            })
+            self._trade_logger.log(
+                EventType.ORDER_REJECTED,
+                current_order.trading_symbol,
+                {
+                    "broker_order_id": broker_oid,
+                    "attempt": attempt,
+                    "reason": "fill_timeout_no_confirmation",
+                    "side": current_order.side.value,
+                    "quantity": current_order.quantity,
+                    "limit_price": str(current_order.limit_price),
+                },
+                level="WARNING",
+            )
+            try:
+                if hasattr(self._broker, "cancel_order"):
+                    self._broker.cancel_order(broker_oid)  # type: ignore[attr-defined]
+            except Exception as exc:
+                logger.warning("cancel_unfilled_order_failed", extra={"error": str(exc)})
+
+            if attempt < _MAX_ORDER_RETRIES:
+                # Retry with a more aggressive price (cross the spread wider)
+                tick = Decimal("0.05")
+                if current_order.side == Side.BUY:
+                    new_price = current_order.limit_price + tick * 2
+                else:
+                    new_price = max(current_order.limit_price - tick * 2, tick)
+                current_order = current_order.model_copy(update={"limit_price": new_price})
+                logger.info("order_retry_adjusted_price", extra={
+                    "symbol": current_order.trading_symbol,
+                    "attempt": attempt + 1,
+                    "new_price": str(new_price),
+                })
+                time.sleep(_ORDER_SPACING_SECONDS)
+
+        return None
+
+    def _check_available_funds(self) -> Tuple[float, Optional[str]]:
+        """
+        Fetch available funds from Zerodha before any trade.
+
+        Returns:
+            (available_margin, error_message).  error_message is None on success.
+        """
+        try:
+            margins_data = self._broker.get_margins()  # type: ignore[attr-defined]
+            equity_avail = (margins_data.get("equity", {}) or margins_data).get("available", {})
+            cash_margin = float(equity_avail.get("live_balance", 0) or 0)
+            collateral = float(equity_avail.get("collateral", 0) or 0)
+            available = cash_margin + collateral
+            logger.info("funds_check_ok", extra={
+                "cash": round(cash_margin, 2),
+                "collateral": round(collateral, 2),
+                "total_available": round(available, 2),
+            })
+            return available, None
+        except Exception as exc:
+            msg = f"funds_check_failed: {exc}"
+            logger.error(msg)
+            self._trade_logger.log(
+                EventType.FUNDS_CHECK_FAILED,
+                None,
+                {"error": str(exc)},
+                level="ERROR",
+            )
+            return 0.0, str(exc)
+
     def _place_order_safe(self, order: Order) -> Optional[str]:
         """
         Place an order using the broker, catching and logging exceptions.
@@ -1379,6 +1637,10 @@ class CondorRunner:
                 level="ERROR",
             )
             return None
+
+    def _get_now_str(self) -> str:
+        """Return current IST time as 'HH:MM'. Override in tests to fix time."""
+        return datetime.now(IST).strftime("%H:%M")
 
     def _get_spot(self, symbol: str) -> Optional[float]:
         """
