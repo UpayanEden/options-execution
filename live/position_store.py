@@ -49,18 +49,53 @@ CREATE TABLE IF NOT EXISTS positions (
 );
 """
 
+_CREATE_SHIFT_LEDGER_SQL = """
+CREATE TABLE IF NOT EXISTS shift_ledger (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol         TEXT    NOT NULL,
+    entry_time     TEXT    NOT NULL,
+    shift_no       INTEGER NOT NULL,
+    side           TEXT    NOT NULL,
+    close_debit    REAL    NOT NULL,
+    new_credit     REAL    NOT NULL,
+    timestamp      TEXT    NOT NULL,
+    trend          TEXT    NOT NULL DEFAULT 'NEUTRAL',
+    dte            INTEGER NOT NULL DEFAULT 0,
+    distances_used TEXT    NOT NULL DEFAULT '{}'
+);
+"""
+
+
+_CREATE_EXITED_EXPIRIES_SQL = """
+CREATE TABLE IF NOT EXISTS exited_expiries (
+    symbol     TEXT NOT NULL,
+    expiry     TEXT NOT NULL,
+    closed_at  TEXT NOT NULL,
+    reason     TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (symbol, expiry)
+)
+"""
+
 
 def _connect() -> sqlite3.Connection:
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute(_CREATE_SQL)
-    # Migrate: add dist_pct columns if they don't exist yet (existing DBs)
+    conn.execute(_CREATE_SHIFT_LEDGER_SQL)
+    conn.execute(_CREATE_EXITED_EXPIRIES_SQL)
+    # Migrate: add columns if they don't exist yet (existing DBs)
     existing = {row[1] for row in conn.execute("PRAGMA table_info(positions)")}
     if "put_dist_pct" not in existing:
         conn.execute("ALTER TABLE positions ADD COLUMN put_dist_pct REAL NOT NULL DEFAULT 5.0")
     if "call_dist_pct" not in existing:
         conn.execute("ALTER TABLE positions ADD COLUMN call_dist_pct REAL NOT NULL DEFAULT 5.0")
+    if "original_credit" not in existing:
+        conn.execute("ALTER TABLE positions ADD COLUMN original_credit REAL DEFAULT NULL")
+        # Migrate existing rows: original_credit = initial_credit
+        conn.execute("UPDATE positions SET original_credit = initial_credit WHERE original_credit IS NULL")
+    if "ban_hold" not in existing:
+        conn.execute("ALTER TABLE positions ADD COLUMN ban_hold INTEGER NOT NULL DEFAULT 0")
     conn.commit()
     return conn
 
@@ -102,6 +137,8 @@ def _pos_to_row(pos: "CondorPosition") -> dict:  # noqa: F821
         "long_call":        _inst(pos.long_call),
         "strikes":          strikes,
         "broker_order_ids": json.dumps(pos.broker_order_ids),
+        "original_credit":  getattr(pos, "original_credit", None) or pos.initial_credit,
+        "ban_hold":         int(getattr(pos, "ban_hold", False)),
     }
 
 
@@ -144,15 +181,16 @@ class PositionStore:
             )
 
     def update_state(self, pos: "CondorPosition") -> None:  # noqa: F821
-        """Update state and shift_count for an existing position row."""
+        """Update state, shift_count, initial_credit, and leg instruments for an existing position row."""
         try:
             self._conn.execute(
-                "UPDATE positions SET state=?, shift_count=?, "
+                "UPDATE positions SET state=?, shift_count=?, initial_credit=?, "
                 "short_put=?, long_put=?, short_call=?, long_call=?, strikes=? "
                 "WHERE symbol=? AND entry_time=?",
                 (
                     pos.state,
                     pos.shift_count,
+                    pos.initial_credit,
                     json.dumps({"instrument_token": pos.short_put.instrument_token,
                                 "trading_symbol": pos.short_put.trading_symbol,
                                 "strike": float(pos.short_put.strike)}),
@@ -212,6 +250,94 @@ class PositionStore:
         except sqlite3.Error as exc:
             logger.error("position_store_load_failed", extra={"error": str(exc)})
             return []
+
+    def record_shift(
+        self,
+        pos: "CondorPosition",  # noqa: F821
+        side: str,
+        close_debit: float,
+        new_credit: float,
+        trend: str,
+        dte: int,
+        distances_used: dict,
+    ) -> None:
+        """
+        Record a shift event in the shift_ledger table.
+
+        Args:
+            pos:            The CondorPosition being shifted.
+            side:           "PUT" or "CALL" — which side was shifted.
+            close_debit:    Net debit paid to close old spread (per share).
+            new_credit:     Net credit received for new spread (per share).
+            trend:          Trend classification at time of shift: "UP", "DOWN", or "NEUTRAL".
+            dte:            DTE at time of shift.
+            distances_used: Dict with keys 'put_dist' and 'call_dist' showing effective distances.
+        """
+        try:
+            self._conn.execute(
+                "INSERT INTO shift_ledger "
+                "(symbol, entry_time, shift_no, side, close_debit, new_credit, timestamp, trend, dte, distances_used) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    pos.symbol,
+                    pos.entry_time.isoformat(),
+                    pos.shift_count,
+                    side,
+                    round(close_debit, 4),
+                    round(new_credit, 4),
+                    datetime.now(IST).isoformat(),
+                    trend,
+                    dte,
+                    json.dumps(distances_used),
+                ),
+            )
+            self._conn.commit()
+            logger.debug("shift_ledger_recorded", extra={"symbol": pos.symbol, "side": side, "shift_no": pos.shift_count})
+        except sqlite3.Error as exc:
+            logger.error("shift_ledger_record_failed", extra={"symbol": pos.symbol, "error": str(exc)})
+
+    def get_shift_ledger(self, pos: "CondorPosition") -> list[dict]:  # noqa: F821
+        """
+        Return all shift_ledger rows for a given position.
+
+        Args:
+            pos: The CondorPosition to look up.
+
+        Returns:
+            List of shift record dicts, ordered by shift_no ascending.
+        """
+        try:
+            cur = self._conn.execute(
+                "SELECT * FROM shift_ledger WHERE symbol=? AND entry_time=? ORDER BY shift_no ASC",
+                (pos.symbol, pos.entry_time.isoformat()),
+            )
+            return [dict(r) for r in cur.fetchall()]
+        except sqlite3.Error as exc:
+            logger.error("shift_ledger_load_failed", extra={"symbol": pos.symbol, "error": str(exc)})
+            return []
+
+    def mark_exited_expiry(self, symbol: str, expiry: str, reason: str = "") -> None:
+        """Record that symbol+expiry has been exited — prevents re-entry this cycle."""
+        try:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO exited_expiries (symbol, expiry, closed_at, reason) VALUES (?, ?, ?, ?)",
+                (symbol, expiry, datetime.now(IST).isoformat(), reason),
+            )
+            self._conn.commit()
+            logger.info("exited_expiry_recorded", extra={"symbol": symbol, "expiry": expiry, "reason": reason})
+        except sqlite3.Error as exc:
+            logger.error("exited_expiry_record_failed", extra={"symbol": symbol, "error": str(exc)})
+
+    def is_expiry_exited(self, symbol: str, expiry: str) -> bool:
+        """Return True if this symbol+expiry has been exited this cycle."""
+        try:
+            cur = self._conn.execute(
+                "SELECT 1 FROM exited_expiries WHERE symbol=? AND expiry=?",
+                (symbol, expiry),
+            )
+            return cur.fetchone() is not None
+        except sqlite3.Error:
+            return False
 
     def close(self) -> None:
         """Close the database connection."""

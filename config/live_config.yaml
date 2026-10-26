@@ -25,6 +25,39 @@ strategy:
   default_lots: 0           # Lots per trade for all stocks (0 = auto-size from capital)
   dte_exit: 2               # Force-close positions when DTE ≤ this (2 = 2 days before expiry)
 
+  # ── Near-expiry distance tightening (Section 1) ─────────────────────────
+  near_expiry_days: 10               # DTE threshold: use tighter distances below this
+  near_expiry_dist_reduction: 0.40   # Reduce distances by 40% when DTE <= near_expiry_days
+
+  # ── Trend-aware distance boost (Section 2) ──────────────────────────────
+  trend_adx_min: 20.0        # Minimum ADX for trend gate to pass; below → NEUTRAL
+  trend_dist_boost: 0.10     # Boost shift distance by 10% when trend aligns with trigger side
+
+  # ── Faster fill polling (Section 3) ─────────────────────────────────────
+  fill_poll_interval_s: 0.5  # Seconds between order status polls for shift legs
+  fill_step_after_s: 3.0     # Seconds without fill before stepping limit price
+  max_price_modifications: 5 # Max price steps before abandoning order
+  max_slippage_pct: 5.0      # Max % slippage from initial limit price allowed
+
+  # ── Exit-instead-of-shift gate (Section 4) ──────────────────────────────
+  min_shifts_before_exit_gate: 2  # Minimum shifts before exit gate is evaluated
+  exit_gate_pct: 0.05             # Exit if projected_credit <= 5% of original_credit
+
+  # ── Spot missing alerts (Section 6) ─────────────────────────────────────
+  spot_missing_alert_cycles: 4    # Alert after this many consecutive missing-spot cycles
+
+  # ── F&O ban behaviour (Section 7) ───────────────────────────────────────
+  allow_dte_exit_during_ban: true  # Allow DTE-triggered exit even if symbol is on ban list
+
+  profit_target_pct: 85.0      # exit when 85% of net premium captured
+  min_entry_premium_pct: 25.0    # minimum premium/width ratio at entry (%)
+
+# ── Telegram alert notifications (Section 8) ────────────────────────────────
+# Leave blank to disable Telegram alerts. Never commit real tokens.
+alerts:
+  telegram_bot_token: ""    # Telegram bot token (set via env var or here)
+  telegram_chat_id: ""      # Chat/channel ID to send alerts to
+
 # ── Zerodha credentials (prefer env vars over hardcoding here) ──────────────
 zerodha:
   api_key: ""               # Set ZERODHA_API_KEY env var instead

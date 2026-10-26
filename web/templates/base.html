@@ -239,6 +239,11 @@
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a class="nav-link {% if request.path == '/zerodha/book' %}active{% endif %}" href="/zerodha/book">
+                        <i class="bi bi-book me-1"></i>Zerodha Book
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link {% if request.path == '/config' %}active{% endif %}" href="/config">
                         <i class="bi bi-gear me-1"></i>Config
                     </a>
@@ -256,6 +261,9 @@
             </ul>
 
             <div class="d-flex align-items-center gap-2">
+                <span id="last-refresh-indicator" class="text-muted small ms-auto me-3" style="font-size:0.75rem;">
+                    Last refreshed: <span id="last-refresh-time">—</span>
+                </span>
                 <span class="text-muted small" id="last-update"></span>
 
                 <!-- ── Runner start/stop ──────────────────────────── -->
@@ -291,6 +299,9 @@
         </div>
     </div>
 </nav>
+
+<!-- ── Stale data banner ───────────────────────────────────────────────── -->
+<div id="stale-data-banner" class="alert alert-warning" style="display:none; margin:0; border-radius:0; position:sticky; top:56px; z-index:999;"></div>
 
 <!-- ── Main content ────────────────────────────────────────────────────── -->
 <main class="container-fluid px-4 py-3">
@@ -609,6 +620,32 @@
             }
         } catch (e) {
             alert('Error: ' + e.message);
+        }
+    }
+</script>
+
+<script>
+    // ── Global stale-data handler ─────────────────────────────────────────
+    window._lastRefreshTime = null;
+
+    function updateRefreshIndicator(isoTimestamp) {
+        window._lastRefreshTime = isoTimestamp;
+        const el = document.getElementById('last-refresh-time');
+        if (!el) return;
+        const d = new Date(isoTimestamp);
+        el.textContent = d.toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+        el.style.color = '';  // reset warning colour
+        const banner = document.getElementById('stale-data-banner');
+        if (banner) banner.style.display = 'none';
+    }
+
+    function markDataStale(errorMsg) {
+        const el = document.getElementById('last-refresh-time');
+        if (el) el.style.color = '#f0ad4e';  // warning yellow
+        const banner = document.getElementById('stale-data-banner');
+        if (banner) {
+            banner.style.display = 'block';
+            banner.textContent = 'Feed stale — last data at ' + (el ? el.textContent : '?') + (errorMsg ? ': ' + errorMsg : '');
         }
     }
 </script>

@@ -31,7 +31,9 @@ from live.config import LiveConfig, StockConfig, load_config as _load_live_confi
 from live.guard_layers import GuardContext, GuardReport, run_all_guards
 from live.position_store import PositionStore
 from live.shift_monitor import ShiftMonitor
+from live.shift_order_manager import SharedOrderPoller, place_and_confirm_shift_leg
 from live.trade_logger import EventType, TradeLogger
+from live.trend_classifier import classify_trend
 from risk.kill_switch import KillSwitch, KillSwitchError
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -121,6 +123,15 @@ class CondorPosition:
 
     fo_ban_suspended_at: float = 0.0
     """Unix timestamp when F&O ban suspension was last set."""
+
+    original_credit: float = 0.0
+    """Net premium credit at entry — immutable; used by exit gate."""
+
+    recon_legs: Optional[dict] = None
+    """Filled by NEEDS_RECON state: {leg_name: {instrument, filled_qty, broker_oid}}."""
+
+    ban_hold: bool = False
+    """True when symbol is on F&O ban list — shift is paused, DTE exit may still fire."""
 
 
 # ── CondorRunner ───────────────────────────────────────────────────────────
@@ -389,6 +400,19 @@ class CondorRunner:
             logger.warning("no_suitable_expiry", extra={"symbol": symbol})
             return None
 
+        # ── No re-entry after exit for this expiry ────────────────────────
+        if self._position_store.is_expiry_exited(symbol, str(expiry)):
+            logger.info(
+                "entry_blocked_expiry_already_exited",
+                extra={"symbol": symbol, "expiry": str(expiry)},
+            )
+            self._trade_logger.log(
+                EventType.ENTRY_FAILED, symbol,
+                {"reason": "expiry_already_exited", "expiry": str(expiry)},
+                level="INFO",
+            )
+            return None
+
         # ── 3. Calculate target strikes ────────────────────────────────────
         short_put_target = spot * (1.0 - stock.put_dist_pct / 100.0)
         short_call_target = spot * (1.0 + stock.call_dist_pct / 100.0)
@@ -477,6 +501,30 @@ class CondorRunner:
         long_put_price   = _round(quotes_by_sym[long_put_inst.trading_symbol].ask)
         short_call_price = _round(quotes_by_sym[short_call_inst.trading_symbol].bid)
         long_call_price  = _round(quotes_by_sym[long_call_inst.trading_symbol].ask)
+
+        # ── Premium-to-width filter ────────────────────────────────────────
+        spread_width = float(short_put_strike - long_put_strike)  # same as call side
+        net_credit_check = float(short_put_price + short_call_price - long_put_price - long_call_price)
+        min_prem_pct = self._config.strategy.min_entry_premium_pct / 100.0
+        if spread_width > 0 and min_prem_pct > 0 and net_credit_check / spread_width < min_prem_pct:
+            self._trade_logger.log(
+                EventType.ENTRY_FAILED, symbol,
+                {
+                    "reason": "insufficient_premium",
+                    "net_credit": round(float(net_credit_check), 4),
+                    "spread_width": spread_width,
+                    "premium_pct": round(net_credit_check / spread_width * 100, 2),
+                    "min_required_pct": self._config.strategy.min_entry_premium_pct,
+                },
+                level="WARNING",
+            )
+            logger.warning(
+                "entry_skipped_low_premium",
+                extra={"symbol": symbol,
+                       "premium_pct": round(net_credit_check / spread_width * 100, 2),
+                       "min_required_pct": self._config.strategy.min_entry_premium_pct},
+            )
+            return None
 
         # ── 8. Run guard layers ────────────────────────────────────────────
         instruments_map = {
@@ -644,6 +692,8 @@ class CondorRunner:
             broker_order_ids=order_ids,
             state="OPEN",
         )
+        # Set original_credit at entry — never mutated (exit gate uses this)
+        pos.original_credit = pos.initial_credit
 
         self._position_store.upsert(pos)
 
@@ -768,6 +818,7 @@ class CondorRunner:
         pos.state = "CLOSED"
         self._capital_manager.release(symbol)
         self._position_store.close_position(pos, pnl=pnl)
+        self._position_store.mark_exited_expiry(pos.symbol, str(pos.expiry), reason)
 
         self._trade_logger.log_exit(
             symbol=symbol,
@@ -815,16 +866,18 @@ class CondorRunner:
         new strikes.  The other spread is left completely untouched.
 
         Execution order (buy-first):
-          1. BUY new long hedge → confirm fill from Zerodha
-          2. SELL new short     → confirm fill from Zerodha
-          3. BUY back old short → confirm fill from Zerodha
-          4. SELL old long hedge→ confirm fill from Zerodha
+          Step 2: BUY new long hedge  → confirm fill
+          Step 3: SELL new short      → confirm fill
+          Step 4a: BUY back old short → confirm fill
+          Step 4b: SELL old long hedge→ confirm fill
 
         Pre-conditions checked before any order:
           • Time cutoff: shifts blocked after 3:20 PM IST.
           • Funds: available Zerodha balance logged; hard stop if unavailable.
-          • Premium gate: if post-shift running credit < 5% of current credit,
-            exit the position instead of shifting.
+          • Near-expiry distance tightening (Section 1).
+          • Trend-aware distance boost (Section 2).
+          • Strike validation after snapping (Section 1).
+          • Exit gate (Section 4): if post-shift credit too low, exit instead.
 
         Args:
             pos:          The CondorPosition to partially shift.
@@ -861,7 +914,6 @@ class CondorRunner:
         available_funds, funds_err = self._check_available_funds()
         if funds_err:
             logger.error("shift_funds_check_error", extra={"symbol": symbol, "error": funds_err})
-            # Proceed with caution but log the issue
         else:
             logger.info("shift_funds_available", extra={"symbol": symbol, "funds": round(available_funds, 2)})
 
@@ -891,6 +943,28 @@ class CondorRunner:
             pos.state = "OPEN"
             return
 
+        # ── Section 1: Compute effective distances (near-expiry tightening) ──
+        dte_remaining = (pos.expiry - date.today()).days
+        if dte_remaining <= self._config.strategy.near_expiry_days:
+            reduction = self._config.strategy.near_expiry_dist_reduction
+            effective_put_dist = pos.put_dist_pct * (1.0 - reduction)
+            effective_call_dist = pos.call_dist_pct * (1.0 - reduction)
+        else:
+            effective_put_dist = pos.put_dist_pct
+            effective_call_dist = pos.call_dist_pct
+
+        # ── Section 2: Trend-aware distance boost ─────────────────────────
+        try:
+            trend = classify_trend(symbol, self._broker, self._config.strategy)
+        except Exception as exc:
+            logger.warning("trend_classify_failed", extra={"symbol": symbol, "error": str(exc)})
+            trend = "NEUTRAL"
+
+        if trigger_side == "CALL" and trend == "UP":
+            effective_call_dist *= (1.0 + self._config.strategy.trend_dist_boost)
+        elif trigger_side == "PUT" and trend == "DOWN":
+            effective_put_dist *= (1.0 + self._config.strategy.trend_dist_boost)
+
         wing_width = spot * self._config.strategy.wing_width_pct / 100.0
         available_puts, available_calls = self._get_available_strikes(symbol, pos.expiry)
         if not available_puts or not available_calls:
@@ -899,11 +973,45 @@ class CondorRunner:
             pos.state = "OPEN"
             return
 
+        shift_trigger_pct = self._config.strategy.shift_trigger_pct
+
         if trigger_side == "PUT":
-            new_short_target = spot * (1.0 - pos.put_dist_pct / 100.0)
+            new_short_target = spot * (1.0 - effective_put_dist / 100.0)
             new_long_target  = new_short_target - wing_width
             new_short_strike = self._snap_to_strike(new_short_target, available_puts)
             new_long_strike  = self._snap_to_strike(new_long_target,  available_puts)
+
+            # Section 1: Validate new short strike is not too close
+            put_min_interval = (available_puts[1] - available_puts[0]) if len(available_puts) > 1 else 50.0
+            if spot < new_short_strike * (1.0 + shift_trigger_pct / 100.0):
+                # Try one step further out (lower for puts)
+                idx = available_puts.index(new_short_strike) if new_short_strike in available_puts else -1
+                if idx > 0:
+                    new_short_strike = available_puts[idx - 1]
+                    new_long_strike = self._snap_to_strike(new_short_strike - wing_width, available_puts)
+                if spot < new_short_strike * (1.0 + shift_trigger_pct / 100.0):
+                    logger.warning("shift_abort_strike_too_close_put", extra={"symbol": symbol, "spot": spot, "new_short_strike": new_short_strike})
+                    self._trade_logger.log(
+                        EventType.SHIFT_ABORT_STRIKE_TOO_CLOSE, symbol,
+                        {"trigger_side": trigger_side, "spot": spot, "new_short_strike": new_short_strike,
+                         "required_min": new_short_strike * (1.0 + shift_trigger_pct / 100.0)},
+                        level="WARNING",
+                    )
+                    pos.state = "OPEN"
+                    return
+
+            # Abort if new strikes identical to current
+            if new_short_strike == float(pos.short_put.strike) and new_long_strike == float(pos.long_put.strike):
+                logger.warning("shift_abort_no_change_put", extra={"symbol": symbol})
+                self._trade_logger.log(
+                    EventType.SHIFT_ABORT_NO_CHANGE, symbol,
+                    {"trigger_side": trigger_side, "new_short_strike": new_short_strike,
+                     "current_short_strike": float(pos.short_put.strike)},
+                    level="WARNING",
+                )
+                pos.state = "OPEN"
+                return
+
             try:
                 new_short_inst = self._broker.resolve_instrument(
                     symbol, "NFO", pos.expiry, Decimal(str(new_short_strike)), "PE"
@@ -917,10 +1025,42 @@ class CondorRunner:
                 pos.state = "OPEN"
                 return
         else:
-            new_short_target = spot * (1.0 + pos.call_dist_pct / 100.0)
+            new_short_target = spot * (1.0 + effective_call_dist / 100.0)
             new_long_target  = new_short_target + wing_width
             new_short_strike = self._snap_to_strike(new_short_target, available_calls)
             new_long_strike  = self._snap_to_strike(new_long_target,  available_calls)
+
+            # Section 1: Validate new short strike is not too close
+            call_min_interval = (available_calls[1] - available_calls[0]) if len(available_calls) > 1 else 50.0
+            if spot > new_short_strike * (1.0 - shift_trigger_pct / 100.0):
+                # Try one step further out (higher for calls)
+                idx = available_calls.index(new_short_strike) if new_short_strike in available_calls else -1
+                if idx >= 0 and idx < len(available_calls) - 1:
+                    new_short_strike = available_calls[idx + 1]
+                    new_long_strike = self._snap_to_strike(new_short_strike + wing_width, available_calls)
+                if spot > new_short_strike * (1.0 - shift_trigger_pct / 100.0):
+                    logger.warning("shift_abort_strike_too_close_call", extra={"symbol": symbol, "spot": spot, "new_short_strike": new_short_strike})
+                    self._trade_logger.log(
+                        EventType.SHIFT_ABORT_STRIKE_TOO_CLOSE, symbol,
+                        {"trigger_side": trigger_side, "spot": spot, "new_short_strike": new_short_strike,
+                         "required_max": new_short_strike * (1.0 - shift_trigger_pct / 100.0)},
+                        level="WARNING",
+                    )
+                    pos.state = "OPEN"
+                    return
+
+            # Abort if new strikes identical to current
+            if new_short_strike == float(pos.short_call.strike) and new_long_strike == float(pos.long_call.strike):
+                logger.warning("shift_abort_no_change_call", extra={"symbol": symbol})
+                self._trade_logger.log(
+                    EventType.SHIFT_ABORT_NO_CHANGE, symbol,
+                    {"trigger_side": trigger_side, "new_short_strike": new_short_strike,
+                     "current_short_strike": float(pos.short_call.strike)},
+                    level="WARNING",
+                )
+                pos.state = "OPEN"
+                return
+
             try:
                 new_short_inst = self._broker.resolve_instrument(
                     symbol, "NFO", pos.expiry, Decimal(str(new_short_strike)), "CE"
@@ -1000,8 +1140,96 @@ class CondorRunner:
         new_side_credit_estimated = float(new_short_price) - float(new_long_price)
         close_debit_estimated = float(close_short_price) - float(close_long_price)
 
-        # ── Premium gate: if post-shift running credit < 5% of current credit, exit ──
-        # "initial premium after shifts is less than 5%" → exit the position instead
+        # ── Section 4: Exit gate ──────────────────────────────────────────
+        running_credit = pos.initial_credit
+        original_credit = pos.original_credit if pos.original_credit > 0 else pos.initial_credit
+        projected_credit = running_credit + (new_side_credit_estimated - close_debit_estimated)
+
+        # Fetch all-4-leg exit quotes for exit_pnl_now estimate
+        exit_pnl_now = 0.0
+        try:
+            all_leg_pairs = [
+                (pos.short_put.instrument_token, pos.short_put.trading_symbol),
+                (pos.long_put.instrument_token, pos.long_put.trading_symbol),
+                (pos.short_call.instrument_token, pos.short_call.trading_symbol),
+                (pos.long_call.instrument_token, pos.long_call.trading_symbol),
+            ]
+            all_quotes = self._broker.get_quotes(all_leg_pairs)
+            # Exit cost: buy back shorts at ask, sell longs at bid
+            q_sp = all_quotes.get(pos.short_put.instrument_token)
+            q_lp = all_quotes.get(pos.long_put.instrument_token)
+            q_sc = all_quotes.get(pos.short_call.instrument_token)
+            q_lc = all_quotes.get(pos.long_call.instrument_token)
+            exit_cost = 0.0
+            if q_sp: exit_cost += float(q_sp.ask)
+            if q_lp: exit_cost -= float(q_lp.bid)
+            if q_sc: exit_cost += float(q_sc.ask)
+            if q_lc: exit_cost -= float(q_lc.bid)
+            exit_pnl_now = (running_credit - exit_cost) * qty
+        except Exception as exc:
+            logger.warning("shift_exit_pnl_estimate_failed", extra={"symbol": symbol, "error": str(exc)})
+
+        new_spread_width = abs(new_short_strike - new_long_strike)
+        shift_worst_pnl = (projected_credit - new_spread_width) * qty
+
+        # Condition 2: projected_credit <= 0 → always exit
+        if projected_credit <= 0:
+            logger.warning("shift_exit_projected_credit_zero", extra={
+                "symbol": symbol, "projected_credit": round(projected_credit, 4),
+                "running_credit": round(running_credit, 4),
+            })
+            self._trade_logger.log(
+                EventType.EXIT_INSTEAD_OF_SHIFT, symbol,
+                {
+                    "trigger_side": trigger_side,
+                    "running_credit": round(running_credit, 4),
+                    "projected_credit": round(projected_credit, 4),
+                    "original_credit": round(original_credit, 4),
+                    "exit_pnl_now": round(exit_pnl_now, 2),
+                    "shift_worst_pnl": round(shift_worst_pnl, 2),
+                    "shift_count": pos.shift_count,
+                    "reason": "projected_credit_zero_or_negative",
+                },
+                level="WARNING",
+            )
+            pos.state = "OPEN"
+            self.exit_condor(pos, "EXIT_INSTEAD_OF_SHIFT_ZERO_CREDIT")
+            return
+
+        # Condition 1: after min_shifts, if projected_credit <= exit_gate_pct * original_credit
+        # AND exit right now is better than worst case of the shift
+        min_shifts = self._config.strategy.min_shifts_before_exit_gate
+        exit_gate_pct = self._config.strategy.exit_gate_pct
+        if (pos.shift_count >= min_shifts
+                and projected_credit <= exit_gate_pct * original_credit
+                and exit_pnl_now >= shift_worst_pnl):
+            logger.warning("shift_exit_gate_triggered", extra={
+                "symbol": symbol,
+                "shift_count": pos.shift_count,
+                "projected_credit": round(projected_credit, 4),
+                "threshold": round(exit_gate_pct * original_credit, 4),
+                "exit_pnl_now": round(exit_pnl_now, 2),
+                "shift_worst_pnl": round(shift_worst_pnl, 2),
+            })
+            self._trade_logger.log(
+                EventType.EXIT_INSTEAD_OF_SHIFT, symbol,
+                {
+                    "trigger_side": trigger_side,
+                    "running_credit": round(running_credit, 4),
+                    "projected_credit": round(projected_credit, 4),
+                    "original_credit": round(original_credit, 4),
+                    "exit_pnl_now": round(exit_pnl_now, 2),
+                    "shift_worst_pnl": round(shift_worst_pnl, 2),
+                    "shift_count": pos.shift_count,
+                    "reason": "exit_gate_triggered",
+                },
+                level="WARNING",
+            )
+            pos.state = "OPEN"
+            self.exit_condor(pos, "EXIT_INSTEAD_OF_SHIFT")
+            return
+
+        # ── Step 1b: Old premium gate (kept for backward compat with legacy credit check) ──
         if pos.initial_credit > 0:
             post_shift_credit = pos.initial_credit + (new_side_credit_estimated - close_debit_estimated)
             min_viable_credit = pos.initial_credit * 0.05
@@ -1028,9 +1256,10 @@ class CondorRunner:
                 self.exit_condor(pos, "LOW_PREMIUM_EXIT")
                 return
 
+        # ── Create shared order poller for shift legs ──────────────────────
+        poller = SharedOrderPoller(self._broker)
+
         # ── Step 2: BUY new long hedge first (enter new position with protection) ──
-        # Order: BUY new long → confirm → SELL new short → confirm
-        # THEN close old spread: BUY back old short → confirm → SELL old long → confirm
         buy_new_hedge = Order(
             strategy_run_id=run_id,
             leg_index=0,
@@ -1040,35 +1269,54 @@ class CondorRunner:
             quantity=qty,
             limit_price=new_long_price,
         )
-        self._trade_logger.log_order(buy_new_hedge, EventType.ORDER_PLACED)
-        confirmed_oid = self._place_and_confirm(buy_new_hedge)
-        if not confirmed_oid:
+        oid_step2, qty_step2 = place_and_confirm_shift_leg(
+            broker=self._broker,
+            order=buy_new_hedge,
+            trade_logger=self._trade_logger,
+            config=self._config.strategy,
+            poller=poller,
+            cutoff_time_str=_SHIFT_CUTOFF_TIME,
+            get_now_str_fn=self._get_now_str,
+        )
+
+        if not oid_step2 and qty_step2 == 0:
+            # Full failure — no fill at all
             logger.error("shift_entry_long_failed", extra={"symbol": symbol})
-            # Detect F&O ban period rejection and track consecutive failures
             if "ban period" in self._last_order_error_msg.lower():
                 pos.fo_ban_failures += 1
                 if pos.fo_ban_failures >= 5:
                     pos.fo_ban_suspended = True
                     pos.fo_ban_suspended_at = time.time()
-                    logger.warning(
-                        "shift_fo_ban_suspended",
-                        extra={"symbol": symbol, "failures": pos.fo_ban_failures},
-                    )
+                    logger.warning("shift_fo_ban_suspended", extra={"symbol": symbol, "failures": pos.fo_ban_failures})
                     self._trade_logger.log(
-                        EventType.SHIFT_FAILED,
-                        symbol,
-                        {
-                            "trigger_side": trigger_side,
-                            "failed_step": "buy_new_hedge",
-                            "reason": "fo_ban_suspended_after_5_failures",
-                            "ban_error": self._last_order_error_msg,
-                        },
+                        EventType.SHIFT_FAILED, symbol,
+                        {"trigger_side": trigger_side, "failed_step": "buy_new_hedge",
+                         "reason": "fo_ban_suspended_after_5_failures",
+                         "ban_error": self._last_order_error_msg},
                         level="WARNING",
                     )
                 else:
                     self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_new_hedge")
             else:
                 self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_new_hedge")
+            pos.state = "OPEN"
+            return
+        elif oid_step2 and qty_step2 > 0 and qty_step2 < qty:
+            # Partial fill on step 2 — try to sell it back at market, then return OPEN
+            logger.warning("shift_step2_partial_fill", extra={"symbol": symbol, "filled_qty": qty_step2})
+            try:
+                cancel_order = Order(
+                    strategy_run_id=run_id,
+                    leg_index=0,
+                    trading_symbol=new_long_inst.trading_symbol,
+                    instrument_token=new_long_inst.instrument_token,
+                    side=Side.SELL,
+                    quantity=qty_step2,
+                    limit_price=new_long_price,
+                )
+                self._place_and_confirm(cancel_order)
+            except Exception as exc:
+                logger.error("shift_step2_partial_cancel_failed", extra={"symbol": symbol, "error": str(exc)})
             pos.state = "OPEN"
             return
 
@@ -1081,57 +1329,157 @@ class CondorRunner:
             trading_symbol=new_short_inst.trading_symbol,
             instrument_token=new_short_inst.instrument_token,
             side=Side.SELL,
-            quantity=qty,
+            quantity=qty_step2,
             limit_price=new_short_price,
         )
-        self._trade_logger.log_order(sell_new_short, EventType.ORDER_PLACED)
-        if not self._place_and_confirm(sell_new_short):
+        oid_step3, qty_step3 = place_and_confirm_shift_leg(
+            broker=self._broker,
+            order=sell_new_short,
+            trade_logger=self._trade_logger,
+            config=self._config.strategy,
+            poller=poller,
+            cutoff_time_str=_SHIFT_CUTOFF_TIME,
+            get_now_str_fn=self._get_now_str,
+        )
+        if not oid_step3:
             logger.error("shift_entry_short_failed", extra={"symbol": symbol})
-            self._trade_logger.log_shift_failed(symbol, trigger_side, "sell_new_short")
-            pos.state = "OPEN"
+            self._trade_logger.log(
+                EventType.SHIFT_PARTIAL_FAILURE, symbol,
+                {"trigger_side": trigger_side, "failed_step": "sell_new_short",
+                 "step2_oid": oid_step2, "step2_qty": qty_step2,
+                 "step3_oid": oid_step3, "step3_qty": qty_step3},
+                level="ERROR",
+            )
+            pos.state = "NEEDS_RECON"
+            pos.recon_legs = {
+                "new_long": {"instrument": new_long_inst.trading_symbol, "filled_qty": qty_step2, "broker_oid": oid_step2},
+                "new_short": {"instrument": new_short_inst.trading_symbol, "filled_qty": qty_step3, "broker_oid": oid_step3},
+            }
+            self._position_store.update_state(pos)
+            try:
+                from live import alerts as _alerts
+                _alerts.send_alert(f"NEEDS_RECON: {symbol} shift step3 failed. Manual reconciliation required.")
+            except Exception:
+                pass
             return
 
         time.sleep(_ORDER_SPACING_SECONDS)
 
-        # ── Step 4: Close the old spread ─────────────────────────────────────
-        # BUY back old short leg (confirm fill before proceeding to sell old hedge)
+        # ── Step 4a: BUY back old short leg ──────────────────────────────────
         buy_back = Order(
             strategy_run_id=run_id,
             leg_index=2,
             trading_symbol=to_close_short.trading_symbol,
             instrument_token=to_close_short.instrument_token,
             side=Side.BUY,
-            quantity=qty,
+            quantity=qty_step3,
             limit_price=close_short_price,
         )
-        self._trade_logger.log_order(buy_back, EventType.ORDER_PLACED)
-        if not self._place_and_confirm(buy_back):
+        oid_step4a, qty_step4a = place_and_confirm_shift_leg(
+            broker=self._broker,
+            order=buy_back,
+            trade_logger=self._trade_logger,
+            config=self._config.strategy,
+            poller=poller,
+            cutoff_time_str=_SHIFT_CUTOFF_TIME,
+            get_now_str_fn=self._get_now_str,
+        )
+        if not oid_step4a:
             logger.error("shift_close_short_failed", extra={"symbol": symbol})
-            self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_back_short")
-            pos.state = "OPEN"
+            self._trade_logger.log(
+                EventType.SHIFT_PARTIAL_FAILURE, symbol,
+                {"trigger_side": trigger_side, "failed_step": "buy_back_short",
+                 "step2_oid": oid_step2, "step2_qty": qty_step2,
+                 "step3_oid": oid_step3, "step3_qty": qty_step3,
+                 "step4a_oid": oid_step4a, "step4a_qty": qty_step4a},
+                level="ERROR",
+            )
+            pos.state = "NEEDS_RECON"
+            pos.recon_legs = {
+                "new_long": {"instrument": new_long_inst.trading_symbol, "filled_qty": qty_step2, "broker_oid": oid_step2},
+                "new_short": {"instrument": new_short_inst.trading_symbol, "filled_qty": qty_step3, "broker_oid": oid_step3},
+                "old_short": {"instrument": to_close_short.trading_symbol, "filled_qty": qty_step4a, "broker_oid": oid_step4a},
+            }
+            self._position_store.update_state(pos)
+            try:
+                from live import alerts as _alerts
+                _alerts.send_alert(f"NEEDS_RECON: {symbol} shift step4a failed. Manual reconciliation required.")
+            except Exception:
+                pass
             return
 
         time.sleep(_ORDER_SPACING_SECONDS)
 
-        # SELL old long hedge to complete closing the old spread
+        # ── Step 4b: SELL old long hedge to complete closing the old spread ───
         sell_hedge = Order(
             strategy_run_id=run_id,
             leg_index=3,
             trading_symbol=to_close_long.trading_symbol,
             instrument_token=to_close_long.instrument_token,
             side=Side.SELL,
-            quantity=qty,
+            quantity=qty_step4a,
             limit_price=close_long_price,
         )
-        self._trade_logger.log_order(sell_hedge, EventType.ORDER_PLACED)
-        if not self._place_and_confirm(sell_hedge):
+        oid_step4b, qty_step4b = place_and_confirm_shift_leg(
+            broker=self._broker,
+            order=sell_hedge,
+            trade_logger=self._trade_logger,
+            config=self._config.strategy,
+            poller=poller,
+            cutoff_time_str=_SHIFT_CUTOFF_TIME,
+            get_now_str_fn=self._get_now_str,
+        )
+        if not oid_step4b:
             logger.error("shift_close_long_failed", extra={"symbol": symbol})
-            self._trade_logger.log_shift_failed(symbol, trigger_side, "sell_old_hedge")
-            pos.state = "OPEN"
+            self._trade_logger.log(
+                EventType.SHIFT_PARTIAL_FAILURE, symbol,
+                {"trigger_side": trigger_side, "failed_step": "sell_old_hedge",
+                 "step2_oid": oid_step2, "step2_qty": qty_step2,
+                 "step3_oid": oid_step3, "step3_qty": qty_step3,
+                 "step4a_oid": oid_step4a, "step4a_qty": qty_step4a,
+                 "step4b_oid": oid_step4b, "step4b_qty": qty_step4b},
+                level="ERROR",
+            )
+            pos.state = "NEEDS_RECON"
+            pos.recon_legs = {
+                "new_long": {"instrument": new_long_inst.trading_symbol, "filled_qty": qty_step2, "broker_oid": oid_step2},
+                "new_short": {"instrument": new_short_inst.trading_symbol, "filled_qty": qty_step3, "broker_oid": oid_step3},
+                "old_short": {"instrument": to_close_short.trading_symbol, "filled_qty": qty_step4a, "broker_oid": oid_step4a},
+                "old_long": {"instrument": to_close_long.trading_symbol, "filled_qty": qty_step4b, "broker_oid": oid_step4b},
+            }
+            self._position_store.update_state(pos)
+            try:
+                from live import alerts as _alerts
+                _alerts.send_alert(f"NEEDS_RECON: {symbol} shift step4b failed. Manual reconciliation required.")
+            except Exception:
+                pass
             return
 
         close_debit = float(close_short_price) - float(close_long_price)
         new_side_credit = float(new_short_price) - float(new_long_price)
+
+        # Check for quantity mismatch across legs
+        if qty_step2 != qty_step3 or qty_step3 != qty_step4a or qty_step4a != qty_step4b:
+            logger.warning("shift_qty_mismatch_needs_recon", extra={
+                "symbol": symbol,
+                "step2": qty_step2, "step3": qty_step3,
+                "step4a": qty_step4a, "step4b": qty_step4b,
+            })
+            self._trade_logger.log(
+                EventType.SHIFT_PARTIAL_FAILURE, symbol,
+                {"trigger_side": trigger_side, "reason": "quantity_mismatch_across_legs",
+                 "step2_qty": qty_step2, "step3_qty": qty_step3,
+                 "step4a_qty": qty_step4a, "step4b_qty": qty_step4b},
+                level="WARNING",
+            )
+            pos.state = "NEEDS_RECON"
+            self._position_store.update_state(pos)
+            try:
+                from live import alerts as _alerts
+                _alerts.send_alert(f"NEEDS_RECON: {symbol} shift qty mismatch. Manual reconciliation required.")
+            except Exception:
+                pass
+            return
 
         # ── Step 5: Mutate position in-place ────────────────────────────────
         if trigger_side == "PUT":
@@ -1147,6 +1495,21 @@ class CondorRunner:
         pos.spot_at_entry   = spot  # update for next trigger calculation
         pos.state           = "OPEN"
         self._position_store.update_state(pos)
+
+        # Record in shift_ledger
+        distances_used = {
+            "put_dist": round(effective_put_dist, 4),
+            "call_dist": round(effective_call_dist, 4),
+        }
+        self._position_store.record_shift(
+            pos=pos,
+            side=trigger_side,
+            close_debit=close_debit,
+            new_credit=new_side_credit,
+            trend=trend,
+            dte=dte_remaining,
+            distances_used=distances_used,
+        )
 
         new_strikes = {
             "short_put":  float(pos.short_put.strike),
@@ -1175,6 +1538,18 @@ class CondorRunner:
             lots=pos.lots,
             lot_size=pos.lot_size,
         )
+        # Log trend in SHIFT_COMPLETE event data is already included via log_shift above.
+        # Also emit a supplementary event with trend info.
+        self._trade_logger.log(
+            EventType.SHIFT_COMPLETE, symbol,
+            {
+                "trend": trend,
+                "effective_put_dist": round(effective_put_dist, 4),
+                "effective_call_dist": round(effective_call_dist, 4),
+                "dte_remaining": dte_remaining,
+            },
+            level="INFO",
+        )
         logger.info(
             "shift_complete",
             extra={
@@ -1184,6 +1559,7 @@ class CondorRunner:
                 "new_short": new_short_strike,
                 "close_debit": round(close_debit, 4),
                 "new_credit":  round(new_side_credit, 4),
+                "trend": trend,
             },
         )
 
@@ -1299,7 +1675,11 @@ class CondorRunner:
         elif isinstance(broker_ids_raw, list):
             broker_order_ids = broker_ids_raw
 
-        return CondorPosition(
+        initial_credit = float(row.get("initial_credit", 0) or 0)
+        # original_credit is immutable; fall back to initial_credit if not in DB
+        original_credit = float(row.get("original_credit") or initial_credit)
+
+        pos = CondorPosition(
             symbol=symbol,
             underlying=symbol,
             expiry=expiry,
@@ -1310,14 +1690,17 @@ class CondorRunner:
             long_call=_parse_leg(row["long_call"], "long_call"),
             lots=int(row["lots"]),
             lot_size=lot_size,
-            initial_credit=float(row.get("initial_credit", 0) or 0),
+            initial_credit=initial_credit,
             put_dist_pct=float(row.get("put_dist_pct") or 5.0),
             call_dist_pct=float(row.get("call_dist_pct") or 5.0),
             entry_time=entry_time,
             shift_count=int(row.get("shift_count", 0) or 0),
             broker_order_ids=broker_order_ids,
             state=str(row.get("state", "OPEN")),
+            original_credit=original_credit,
+            ban_hold=bool(row.get("ban_hold", 0)),
         )
+        return pos
 
     # ── Strike/Expiry helpers ──────────────────────────────────────────────
 

@@ -232,11 +232,56 @@ def create_app() -> Flask:
             return jsonify({"error": f"Token exchange failed: {exc}"}), 500
 
         # Save to credentials.env and update live environment
-        if _save_credential("ZERODHA_ACCESS_TOKEN", access_token):
-            os.environ["ZERODHA_ACCESS_TOKEN"] = access_token
-            logger.info("access_token_refreshed_via_web")
-            return jsonify({"refreshed": True, "token_preview": access_token[:6] + "****"})
-        return jsonify({"error": "Failed to write credentials.env"}), 500
+        if not _save_credential("ZERODHA_ACCESS_TOKEN", access_token):
+            return jsonify({"error": "Failed to write credentials.env"}), 500
+
+        os.environ["ZERODHA_ACCESS_TOKEN"] = access_token
+        logger.info("access_token_refreshed_via_web")
+
+        # Auto-restart runner to pick up new token
+        runner_was_running, old_pid = _runner_is_alive()
+        if runner_was_running and old_pid:
+            try:
+                os.kill(old_pid, signal.SIGTERM)
+                _RUNNER_PID_FILE.unlink(missing_ok=True)
+                logger.info("runner_stopped_for_token_refresh", extra={"old_pid": old_pid})
+                import time as _time
+                _time.sleep(2)  # brief pause for graceful shutdown
+            except Exception as exc:
+                logger.warning("runner_stop_failed_on_token_refresh", extra={"error": str(exc)})
+
+            # Re-launch runner using same method as api_runner_start
+            try:
+                project_root = Path(__file__).resolve().parent.parent
+                log_dir = project_root / "logs" / "live"
+                log_dir.mkdir(parents=True, exist_ok=True)
+                mode = _RUNNER_MODE_FILE.read_text().strip() if _RUNNER_MODE_FILE.exists() else "paper"
+                runner_log = open(log_dir / "runner_stdout.log", "a")
+                proc = subprocess.Popen(
+                    [sys.executable, str(project_root / "run_live.py"), "--runner-only"],
+                    cwd=str(project_root),
+                    stdout=runner_log,
+                    stderr=runner_log,
+                    start_new_session=True,
+                )
+                _RUNNER_PID_FILE.write_text(str(proc.pid))
+                logger.info("runner_restarted_after_token_refresh", extra={"new_pid": proc.pid})
+                runner_restarted = True
+                new_pid = proc.pid
+            except Exception as exc:
+                logger.error("runner_restart_failed", extra={"error": str(exc)})
+                runner_restarted = False
+                new_pid = None
+        else:
+            runner_restarted = False
+            new_pid = None
+
+        return jsonify({
+            "refreshed": True,
+            "token_preview": access_token[:6] + "****",
+            "runner_restarted": runner_restarted,
+            "new_pid": new_pid,
+        })
 
     @app.route("/config", methods=["GET"])
     def config_view():
@@ -277,7 +322,8 @@ def create_app() -> Flask:
     def api_positions():
         """Return current positions as JSON."""
         positions = _load_positions_from_db()
-        return jsonify({"positions": positions, "count": len(positions)})
+        return jsonify({"positions": positions, "count": len(positions),
+                        "fetched_at": datetime.now(IST).isoformat()})
 
     @app.route("/api/dashboard/summary")
     def api_dashboard_summary():
@@ -304,13 +350,15 @@ def create_app() -> Flask:
             "shifts_today": _count_today_shifts(),
             "now": datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
             "positions": positions_with_metrics,
+            "fetched_at": datetime.now(IST).isoformat(),
         })
 
     @app.route("/api/pnl")
     def api_pnl():
         """Return today's P&L per symbol as JSON."""
         pnl = _load_daily_pnl()
-        return jsonify({"pnl": pnl, "date": date.today().isoformat()})
+        return jsonify({"pnl": pnl, "date": date.today().isoformat(),
+                        "fetched_at": datetime.now(IST).isoformat()})
 
     @app.route("/api/live_pnl")
     def api_live_pnl():
@@ -830,6 +878,7 @@ def create_app() -> Flask:
                 "collateral_pledged": round(collateral, 2),
                 "stock_margin_used": round(stock_margin_used, 2),
                 "cash_margin_used": round(cash_margin_used, 2),
+                "fetched_at": datetime.now(IST).isoformat(),
             })
         except Exception as exc:
             return jsonify({"error": str(exc)}), 200
@@ -854,7 +903,8 @@ def create_app() -> Flask:
         symbol = request.args.get("symbol")
         event_type = request.args.get("event_type")
         events = _load_log_events(symbol=symbol, event_type=event_type, limit=n)
-        return jsonify({"events": events, "count": len(events)})
+        return jsonify({"events": events, "count": len(events),
+                        "fetched_at": datetime.now(IST).isoformat()})
 
     @app.route("/api/health")
     def api_health():
@@ -865,6 +915,7 @@ def create_app() -> Flask:
             "kill_switch_active": _KILL_SWITCH_FLAG.exists(),
             "last_heartbeat": last_heartbeat,
             "timestamp": datetime.now(IST).isoformat(),
+            "fetched_at": datetime.now(IST).isoformat(),
         })
 
     @app.route("/api/kill_switch/activate", methods=["POST"])
@@ -983,6 +1034,48 @@ def create_app() -> Flask:
         if success:
             return jsonify({"updated": True, "default_lots": lots})
         return jsonify({"error": "Failed to update config"}), 500
+
+    @app.route("/zerodha/book")
+    def zerodha_book():
+        """Render the Zerodha book page showing actual broker positions."""
+        return render_template("zerodha_book.html",
+                               kill_switch_active=_KILL_SWITCH_FLAG.exists(),
+                               now=datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"))
+
+    @app.route("/api/zerodha/positions")
+    def api_zerodha_positions():
+        """Return broker positions from Zerodha, cross-referenced with system positions."""
+        try:
+            creds = _load_credentials()
+            api_key = creds.get("ZERODHA_API_KEY", "")
+            access_token = creds.get("ZERODHA_ACCESS_TOKEN", "")
+            if not api_key or not access_token:
+                return jsonify({"error": "credentials_not_set", "positions": []}), 200
+
+            from kiteconnect import KiteConnect
+            kite = KiteConnect(api_key=api_key)
+            kite.set_access_token(access_token)
+            broker_positions = kite.positions()
+            net_positions = broker_positions.get("net", [])
+
+            system_symbols = _get_system_trading_symbols()
+
+            result = []
+            for p in net_positions:
+                ts = p.get("tradingsymbol", "")
+                result.append({
+                    **p,
+                    "managed_by_system": ts in system_symbols,
+                })
+
+            return jsonify({
+                "positions": result,
+                "fetched_at": datetime.now(IST).isoformat(),
+                "total": len(result),
+            })
+        except Exception as exc:
+            logger.error("zerodha_book_fetch_failed", extra={"error": str(exc)})
+            return jsonify({"error": str(exc), "positions": []}), 200
 
     @app.route("/reports")
     def reports_view():
@@ -1142,6 +1235,44 @@ def create_app() -> Flask:
 
 
 # ── Data access helpers ────────────────────────────────────────────────────
+
+
+def _get_all_system_order_ids() -> set:
+    """Return all broker order IDs tracked by the system."""
+    try:
+        conn = sqlite3.connect(str(_DB_PATH))
+        cur = conn.execute("SELECT broker_order_ids FROM positions")
+        ids = set()
+        for row in cur.fetchall():
+            try:
+                ids.update(json.loads(row[0] or "[]"))
+            except Exception:
+                pass
+        conn.close()
+        return ids
+    except Exception:
+        return set()
+
+
+def _get_system_trading_symbols() -> set:
+    """Return all trading symbols tracked across all system positions (all 4 legs)."""
+    try:
+        conn = sqlite3.connect(str(_DB_PATH))
+        cur = conn.execute("SELECT short_put, long_put, short_call, long_call FROM positions WHERE state IN ('OPEN', 'SHIFTING')")
+        syms = set()
+        for row in cur.fetchall():
+            for col in row:
+                try:
+                    data = json.loads(col or "{}")
+                    ts = data.get("trading_symbol", "")
+                    if ts:
+                        syms.add(ts)
+                except Exception:
+                    pass
+        conn.close()
+        return syms
+    except Exception:
+        return set()
 
 
 def _db_connect() -> Optional[sqlite3.Connection]:

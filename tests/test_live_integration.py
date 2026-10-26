@@ -257,6 +257,7 @@ def _make_live_config() -> LiveConfig:
             max_dte=45,
             entry_start="00:00",
             entry_end="23:59",
+            min_entry_premium_pct=0.0,  # disable premium filter in integration tests
         ),
         zerodha_api_key="test",
         zerodha_api_secret="test",
@@ -271,6 +272,9 @@ def _make_runner(
     tmp_path: Optional[Any] = None,
 ) -> Tuple[CondorRunner, PaperBroker, TradeLogger]:
     """Create a CondorRunner with a PaperBroker and TradeLogger."""
+    from live.position_store import PositionStore
+    import uuid
+
     if broker is None:
         broker = PaperBroker(spot=spot)
     config = _make_live_config()
@@ -285,6 +289,10 @@ def _make_runner(
         capital_manager=capital_mgr,
         kill_switch=kill_switch,
     )
+    # Use a unique in-memory DB for each test to avoid cross-test contamination
+    from pathlib import Path
+    unique_db = Path(f"/tmp/test_condor_{uuid.uuid4().hex}.db")
+    runner._position_store = PositionStore(db_path=unique_db)
     return runner, broker, tl
 
 
@@ -466,7 +474,8 @@ class TestCondorShift:
     def test_shift_creates_new_position(self, tmp_path):
         """shift_condor should mutate the position in-place and set shift_count=1."""
         runner, broker, _ = _make_runner(spot=2800.0, tmp_path=tmp_path)
-        runner._get_spot = MagicMock(return_value=2810.0)
+        # Use 2860 so new call target = 2860*1.05=3003 → snaps to 3000 (≠ current 2950)
+        runner._get_spot = MagicMock(return_value=2860.0)
         runner._get_now_str = MagicMock(return_value="10:00")
 
         # Create initial position
@@ -502,7 +511,8 @@ class TestCondorShift:
     def test_shift_increments_shift_count(self, tmp_path):
         """shift_condor should increment the shift_count by 1."""
         runner, broker, _ = _make_runner(spot=2800.0, tmp_path=tmp_path)
-        runner._get_spot = MagicMock(return_value=2810.0)
+        # Use 2860 so new call target = 2860*1.05=3003 → snaps to 3000 (≠ current 2950)
+        runner._get_spot = MagicMock(return_value=2860.0)
         runner._get_now_str = MagicMock(return_value="10:00")
 
         expiry = _test_expiry()

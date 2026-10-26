@@ -98,6 +98,48 @@ class StrategyParams:
     dte_exit: int = 2
     """Close positions when days-to-expiry reaches this threshold (default: 2 days before expiry)."""
 
+    near_expiry_days: int = 10
+    """DTE threshold below which tighter shift distances are used."""
+
+    near_expiry_dist_reduction: float = 0.40
+    """Fractional reduction in shift distances when DTE <= near_expiry_days (e.g. 0.40 = 40% tighter)."""
+
+    trend_adx_min: float = 20.0
+    """Minimum ADX(14) value for trend gate to be active. Below this → NEUTRAL."""
+
+    trend_dist_boost: float = 0.10
+    """Fractional boost to shift distance when trend aligns with trigger side (e.g. 0.10 = +10%)."""
+
+    fill_poll_interval_s: float = 0.5
+    """Seconds between each order fill status poll for shift legs."""
+
+    fill_step_after_s: float = 3.0
+    """Seconds without fill before price is stepped one tick more aggressive."""
+
+    max_price_modifications: int = 5
+    """Maximum number of limit price modifications before abandoning an order."""
+
+    max_slippage_pct: float = 5.0
+    """Maximum allowable slippage from initial limit price as a percentage."""
+
+    min_shifts_before_exit_gate: int = 2
+    """Minimum shift count before exit-instead-of-shift gate is evaluated."""
+
+    exit_gate_pct: float = 0.05
+    """Exit gate: exit instead of shift when projected_credit <= this fraction of original_credit."""
+
+    spot_missing_alert_cycles: int = 4
+    """Number of consecutive spot-missing cycles before sending an alert."""
+
+    allow_dte_exit_during_ban: bool = True
+    """If True, allow DTE exit even if symbol is on F&O ban list."""
+
+    profit_target_pct: float = 85.0
+    """Exit when profit captured >= this % of original_credit."""
+
+    min_entry_premium_pct: float = 25.0
+    """Minimum net credit as % of spread width required at entry. Entries with lower premium are skipped."""
+
 
 @dataclass
 class LiveConfig:
@@ -123,6 +165,12 @@ class LiveConfig:
 
     mode: str = "paper"
     """Trading mode: 'paper' or 'live'."""
+
+    telegram_bot_token: str = ""
+    """Telegram bot token for alert notifications. Leave blank to disable."""
+
+    telegram_chat_id: str = ""
+    """Telegram chat/channel ID to send alerts to. Leave blank to disable."""
 
     @property
     def enabled_stocks(self) -> list[StockConfig]:
@@ -200,6 +248,20 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
         entry_end=str(strat_raw.get("entry_end", "14:00")),
         default_lots=int(strat_raw.get("default_lots", 0)),
         dte_exit=int(strat_raw.get("dte_exit", 2)),
+        near_expiry_days=int(strat_raw.get("near_expiry_days", 10)),
+        near_expiry_dist_reduction=float(strat_raw.get("near_expiry_dist_reduction", 0.40)),
+        trend_adx_min=float(strat_raw.get("trend_adx_min", 20.0)),
+        trend_dist_boost=float(strat_raw.get("trend_dist_boost", 0.10)),
+        fill_poll_interval_s=float(strat_raw.get("fill_poll_interval_s", 0.5)),
+        fill_step_after_s=float(strat_raw.get("fill_step_after_s", 3.0)),
+        max_price_modifications=int(strat_raw.get("max_price_modifications", 5)),
+        max_slippage_pct=float(strat_raw.get("max_slippage_pct", 5.0)),
+        min_shifts_before_exit_gate=int(strat_raw.get("min_shifts_before_exit_gate", 2)),
+        exit_gate_pct=float(strat_raw.get("exit_gate_pct", 0.05)),
+        spot_missing_alert_cycles=int(strat_raw.get("spot_missing_alert_cycles", 4)),
+        allow_dte_exit_during_ban=bool(strat_raw.get("allow_dte_exit_during_ban", True)),
+        profit_target_pct=float(strat_raw.get("profit_target_pct", 85.0)),
+        min_entry_premium_pct=float(strat_raw.get("min_entry_premium_pct", 25.0)),
     )
 
     # ── Zerodha credentials (yaml first, env overrides) ────────────────────
@@ -210,6 +272,11 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
 
     mode = os.environ.get("TRADING_MODE") or str(raw.get("mode", "paper"))
 
+    # ── Telegram alerts ────────────────────────────────────────────────────
+    alerts_raw = raw.get("alerts", {})
+    telegram_bot_token = str(alerts_raw.get("telegram_bot_token", ""))
+    telegram_chat_id = str(alerts_raw.get("telegram_chat_id", ""))
+
     cfg = LiveConfig(
         capital=capital,
         stocks=stocks,
@@ -218,6 +285,8 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
         zerodha_api_secret=api_secret,
         zerodha_access_token=access_token,
         mode=mode.lower(),
+        telegram_bot_token=telegram_bot_token,
+        telegram_chat_id=telegram_chat_id,
     )
 
     logger.info(

@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block title %}Zerodha Book — CondorLive{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0 fw-bold">
+        <i class="bi bi-book me-2 text-info"></i>Zerodha Book
+        <span class="badge bg-secondary ms-2" style="font-size:0.7rem;">Read Only</span>
+    </h5>
+    <span class="text-muted small" id="book-refresh-ts">{{ now }}</span>
+</div>
+
+<!-- ── Stale fetch warning ─────────────────────────────────────────────────── -->
+<div id="book-error-banner" class="alert alert-warning py-2 small mb-3" style="display:none;"></div>
+
+<!-- ── Summary row ────────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card text-center h-100">
+            <div class="card-body py-3">
+                <div class="fs-3 fw-bold text-info" id="bk-total">—</div>
+                <div class="text-muted small">Total Positions</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center h-100">
+            <div class="card-body py-3">
+                <div class="fs-3 fw-bold text-success" id="bk-managed">—</div>
+                <div class="text-muted small">Managed by System</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center h-100">
+            <div class="card-body py-3">
+                <div class="fs-3 fw-bold text-warning" id="bk-unmanaged">—</div>
+                <div class="text-muted small">External Positions</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center h-100">
+            <div class="card-body py-3">
+                <div class="fs-3 fw-bold" id="bk-total-pnl">—</div>
+                <div class="text-muted small">Total Day P&amp;L</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Positions table ─────────────────────────────────────────────────────── -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-table me-2"></i>Net Positions</span>
+        <span class="text-muted small">Auto-refreshes every 30s &mdash; read-only view</span>
+    </div>
+    <div class="card-body p-0" id="book-table-container">
+        <div class="text-center text-muted py-5">
+            <span class="spinner-border spinner-sm me-2"></span>Loading broker positions...
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function _pnlClass(val) {
+    if (val == null) return 'text-muted';
+    return parseFloat(val) >= 0 ? 'pnl-positive' : 'pnl-negative';
+}
+function _fmtNum(val, dec=2) {
+    if (val == null) return '—';
+    return parseFloat(val).toLocaleString('en-IN', {maximumFractionDigits: dec, minimumFractionDigits: dec});
+}
+
+function _buildTable(positions) {
+    if (!positions || positions.length === 0) {
+        return `<div class="text-center text-muted py-5">
+            <i class="bi bi-inbox display-4 d-block mb-3 opacity-25"></i>
+            <p class="mb-0">No net positions found in Zerodha.</p>
+        </div>`;
+    }
+    let rows = '';
+    for (const p of positions) {
+        const managed = p.managed_by_system;
+        const managedBadge = managed
+            ? '<span class="badge bg-success" style="font-size:0.7rem;">System</span>'
+            : '<span class="text-muted small">—</span>';
+        const pnl = p.pnl;
+        const qty = p.quantity;
+        const product = p.product || '—';
+        const overnight = p.overnight_quantity;
+        const exchange = p.exchange || '—';
+        rows += `<tr>
+            <td class="ps-3">${exchange}</td>
+            <td class="fw-semibold">${p.tradingsymbol || '—'}</td>
+            <td>${product}</td>
+            <td class="${qty > 0 ? 'pnl-positive' : qty < 0 ? 'pnl-negative' : 'text-muted'}">${qty != null ? qty : '—'}</td>
+            <td>${_fmtNum(p.average_buy_price)}</td>
+            <td>${_fmtNum(p.average_sell_price)}</td>
+            <td>${_fmtNum(p.last_price)}</td>
+            <td class="${_pnlClass(pnl)} fw-semibold">${pnl != null ? (parseFloat(pnl) >= 0 ? '+' : '') + _fmtNum(pnl) : '—'}</td>
+            <td>${managedBadge}</td>
+            <td>${overnight != null ? overnight : '—'}</td>
+        </tr>`;
+    }
+    return `<div class="table-responsive"><table class="table table-hover mb-0 small">
+        <thead><tr>
+            <th class="ps-3">Exchange</th>
+            <th>Symbol</th>
+            <th>Product</th>
+            <th>Qty (Net)</th>
+            <th>Buy Avg</th>
+            <th>Sell Avg</th>
+            <th>LTP</th>
+            <th>P&amp;L</th>
+            <th>Managed by System</th>
+            <th>Overnight Qty</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+async function refreshBookData() {
+    const errorBanner = document.getElementById('book-error-banner');
+    try {
+        const resp = await fetch('/api/zerodha/positions', {cache: 'no-store'});
+        const data = await resp.json();
+
+        if (data.error && data.error === 'credentials_not_set') {
+            const container = document.getElementById('book-table-container');
+            if (container) container.innerHTML = `<div class="text-center text-warning py-5">
+                <i class="bi bi-key display-4 d-block mb-3 opacity-50"></i>
+                <p>Zerodha credentials not set. Visit the <a href="/token" class="text-info">Token page</a> to configure.</p>
+            </div>`;
+            return;
+        }
+
+        if (data.error) {
+            if (errorBanner) {
+                errorBanner.style.display = 'block';
+                errorBanner.textContent = 'Could not refresh: ' + data.error;
+            }
+            // keep old table rows
+            return;
+        }
+
+        // Success
+        if (errorBanner) errorBanner.style.display = 'none';
+
+        const positions = data.positions || [];
+        const managed = positions.filter(p => p.managed_by_system).length;
+        const unmanaged = positions.length - managed;
+        const totalPnl = positions.reduce((s, p) => s + parseFloat(p.pnl || 0), 0);
+
+        const elTotal = document.getElementById('bk-total');
+        const elManaged = document.getElementById('bk-managed');
+        const elUnmanaged = document.getElementById('bk-unmanaged');
+        const elPnl = document.getElementById('bk-total-pnl');
+        if (elTotal) elTotal.textContent = positions.length;
+        if (elManaged) elManaged.textContent = managed;
+        if (elUnmanaged) elUnmanaged.textContent = unmanaged;
+        if (elPnl) {
+            elPnl.textContent = (totalPnl >= 0 ? '+' : '') + '₹' + _fmtNum(totalPnl);
+            elPnl.className = 'fs-3 fw-bold ' + _pnlClass(totalPnl);
+        }
+
+        const container = document.getElementById('book-table-container');
+        if (container) container.innerHTML = _buildTable(positions);
+
+        // Update refresh timestamp
+        const tsEl = document.getElementById('book-refresh-ts');
+        if (tsEl && data.fetched_at) {
+            const d = new Date(data.fetched_at);
+            tsEl.textContent = 'Last refreshed: ' + d.toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+        }
+        if (data.fetched_at && typeof updateRefreshIndicator === 'function') {
+            updateRefreshIndicator(data.fetched_at);
+        }
+
+    } catch(e) {
+        if (errorBanner) {
+            errorBanner.style.display = 'block';
+            errorBanner.textContent = 'Could not refresh: ' + e.message;
+        }
+        // keep old table rows
+    }
+}
+
+// Load on page open, then every 30 seconds
+refreshBookData();
+setInterval(refreshBookData, 30000);
+</script>
+{% endblock %}

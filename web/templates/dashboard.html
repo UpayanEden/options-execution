@@ -412,7 +412,9 @@ async function updateLots() {
 async function refreshLivePnl() {
     try {
         const resp = await fetch('/api/live_pnl', {cache: 'no-store'});
+        if (!resp.ok) { markDataStale('HTTP ' + resp.status); return; }
         const data = await resp.json();
+        if (data.fetched_at) updateRefreshIndicator(data.fetched_at);
 
         // Update total P&L card
         const card = document.getElementById('total-pnl-value');
@@ -456,8 +458,8 @@ async function refreshLivePnl() {
             }
         });
     } catch(e) {
-        const card = document.getElementById('total-pnl-value');
-        if (card) card.innerHTML = '<span class="text-muted small">unavailable</span>';
+        markDataStale(e.message);
+        // keep existing values — do not clear
     }
 }
 
@@ -727,7 +729,9 @@ function _stateBadge(state) {
 async function refreshDashboardSummary() {
     try {
         const resp = await fetch('/api/dashboard/summary', {cache: 'no-store'});
+        if (!resp.ok) { markDataStale('HTTP ' + resp.status); return; }
         const data = await resp.json();
+        if (data.fetched_at) updateRefreshIndicator(data.fetched_at);
 
         // Stat cards — textContent only, no layout change
         const elCount = document.getElementById('stat-open-count');
@@ -804,7 +808,8 @@ async function refreshDashboardSummary() {
         });
 
     } catch(e) {
-        // Silent failure
+        markDataStale(e.message);
+        // keep existing table rows — do not clear
     }
 }
 
