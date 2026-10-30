@@ -218,9 +218,9 @@
                     {% for pos in positions %}
                     {% set sym = pos.get('symbol', '') %}
                     {% set m = pos_metrics.get(sym, {}) %}
-                    <tr>
+                    <tr id="pos-row-{{ sym }}" data-symbol="{{ sym }}">
                         <td class="ps-3 fw-semibold">{{ sym or '—' }}</td>
-                        <td>
+                        <td id="state-{{ sym }}">
                             {% set state = pos.get('state', 'OPEN') %}
                             {% if state == 'OPEN' %}
                             <span class="badge badge-open">OPEN</span>
@@ -312,7 +312,7 @@
                         <td id="shift-cost-{{ sym }}">
                             <span class="text-muted small">—</span>
                         </td>
-                        <td>{{ ss.get('total_shifts', pos.get('shift_count', 0)) }}</td>
+                        <td id="shiftcount-{{ sym }}">{{ ss.get('total_shifts', pos.get('shift_count', 0)) }}</td>
                         <td id="dist-put-{{ sym }}"><span class="text-muted small">—</span></td>
                         <td id="dist-call-{{ sym }}"><span class="text-muted small">—</span></td>
                         <td class="timestamp-cell pe-3">

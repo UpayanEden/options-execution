@@ -85,7 +85,8 @@ def create_app() -> Flask:
     @app.route("/")
     def dashboard():
         """Render the main dashboard with summary cards and open positions."""
-        positions = _load_positions_from_db()
+        positions = [p for p in _load_positions_from_db()
+                     if p.get("state") in ("OPEN", "SHIFTING")]
         pnl_summary = _compute_pnl_summary(positions)
         win_rate = _compute_win_rate()
         shifts_today = _count_today_shifts()
@@ -328,7 +329,8 @@ def create_app() -> Flask:
     @app.route("/api/dashboard/summary")
     def api_dashboard_summary():
         """Return all data needed to refresh the dashboard without a full page reload."""
-        positions = _load_positions_from_db()
+        positions = [p for p in _load_positions_from_db()
+                     if p.get("state") in ("OPEN", "SHIFTING")]
         cfg_raw = yaml.safe_load(_load_config_yaml()) or {}
         pos_metrics = _compute_position_metrics(positions, cfg_raw)
         shift_stats = _get_shift_stats_by_symbol()
@@ -1771,6 +1773,17 @@ def _runner_is_alive() -> tuple[bool, int]:
     try:
         pid = int(_RUNNER_PID_FILE.read_text().strip())
         os.kill(pid, 0)   # signal 0 = existence check, no actual signal sent
+        # Exited children can remain as zombies until their worker reaps them.
+        # Signal 0 succeeds for zombies even though they cannot trade.
+        proc_stat = Path(f"/proc/{pid}/stat")
+        if proc_stat.exists():
+            try:
+                state = proc_stat.read_text().rsplit(")", 1)[1].split()[0]
+            except FileNotFoundError:
+                state = "Z"
+            if state in {"Z", "X"}:
+                _RUNNER_PID_FILE.unlink(missing_ok=True)
+                return False, 0
         return True, pid
     except (ValueError, ProcessLookupError, PermissionError):
         _RUNNER_PID_FILE.unlink(missing_ok=True)

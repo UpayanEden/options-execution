@@ -42,7 +42,9 @@ try:
     from dotenv import load_dotenv
     _env_path = _PROJECT_ROOT / "config" / "credentials.env"
     if _env_path.exists():
-        load_dotenv(_env_path)
+        # Dashboard workers can inherit an older token. The saved credentials
+        # are authoritative for every new runner, regardless of which starts it.
+        load_dotenv(_env_path, override=True)
         print(f"[run_live] Loaded credentials from {_env_path}")
     else:
         _alt = _PROJECT_ROOT / ".env"

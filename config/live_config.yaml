@@ -71,6 +71,7 @@ zerodha:
 # enabled:       Set to false to exclude stock from session entries
 # expiry_type:   'monthly' = last Thursday of month (default for all stocks)
 #                'weekly'  = nearest Thursday in DTE window (for indices like NIFTY)
+# expiry_date:   Pin to a specific expiry, e.g. '2026-11-27'. Overrides expiry_type and DTE window.
 
 stocks:
   - symbol: AMBUJACEM

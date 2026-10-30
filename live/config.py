@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -68,6 +69,9 @@ class StockConfig:
 
     expiry_type: str = "monthly"
     """Expiry cycle to target: 'monthly' (last Thursday of month) or 'weekly' (any Thursday)."""
+
+    expiry_date: Optional[date] = None
+    """Pin this stock to a specific expiry date (YYYY-MM-DD). Overrides expiry_type and DTE window."""
 
 
 @dataclass
@@ -225,6 +229,17 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
                 extra={"symbol": s.get("symbol"), "expiry_type": expiry_type},
             )
             expiry_type = "monthly"
+        expiry_date: Optional[date] = None
+        raw_expiry_date = s.get("expiry_date")
+        if raw_expiry_date is not None:
+            try:
+                expiry_date = date.fromisoformat(str(raw_expiry_date))
+            except ValueError:
+                logger.warning(
+                    "invalid_expiry_date",
+                    extra={"symbol": s.get("symbol"), "expiry_date": raw_expiry_date},
+                )
+
         stocks.append(
             StockConfig(
                 symbol=str(s["symbol"]),
@@ -234,6 +249,7 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
                 lots=int(s.get("lots", 0)),
                 enabled=bool(s.get("enabled", True)),
                 expiry_type=expiry_type,
+                expiry_date=expiry_date,
             )
         )
 
