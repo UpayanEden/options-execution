@@ -227,6 +227,10 @@ class PaperBroker(BrokerAdapter):
         """Return None — spot is injected via _get_spot mock."""
         return None
 
+    def get_basket_margin(self, orders: list) -> dict:
+        """Return empty dict — broker_required_margin falls back to estimate in tests."""
+        return {}
+
 
 # ── Config fixture ─────────────────────────────────────────────────────────
 

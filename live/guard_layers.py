@@ -149,6 +149,10 @@ class GuardContext:
     open_condors_count: int = 0
     """Current number of open condor positions (for PositionGuard)."""
 
+    broker_required_margin: Optional[float] = None
+    """Broker-confirmed basket margin (from get_basket_margin). If set, CapitalGuard
+    uses this instead of the internal wing-width estimate."""
+
 
 # ── Guard Layer 1: InstrumentGuard ────────────────────────────────────────
 
@@ -462,9 +466,14 @@ def _capital_guard(ctx: GuardContext) -> GuardResult:
     max_per_stock = cfg_cap.max_capital_per_stock
     cash_pct = cfg_cap.cash_margin_pct
 
-    # Estimate required margin for this trade: worst-case wing × lots × lot_size
-    wing_width = ctx.spot * ctx.config.strategy.wing_width_pct / 100.0
-    required_margin = wing_width * ctx.lots * ctx.lot_size * 1.20  # +20% SPAN buffer
+    # Required margin: use broker-confirmed basket margin if available, else estimate
+    if ctx.broker_required_margin is not None:
+        required_margin = ctx.broker_required_margin
+        data["margin_source"] = "broker_basket"
+    else:
+        wing_width = ctx.spot * ctx.config.strategy.wing_width_pct / 100.0
+        required_margin = wing_width * ctx.lots * ctx.lot_size * 1.20  # +20% SPAN buffer
+        data["margin_source"] = "wing_width_estimate"
     data["estimated_margin"] = round(required_margin, 2)
     data["available_margin"] = round(ctx.available_margin, 2)
     data["total_allocated"] = round(ctx.total_allocated_margin, 2)

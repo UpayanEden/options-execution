@@ -274,6 +274,7 @@ def test_min_premium_filter_in_condor_runner(tmp_path):
         inst.instrument_token = token
         inst.trading_symbol = ts
         inst.lot_size = 100
+        inst.tick_size = Decimal("0.05")
         inst.strike = Decimal(str(strike))
         inst.option_type = MagicMock(value="PE")
         return inst
@@ -287,9 +288,14 @@ def test_min_premium_filter_in_condor_runner(tmp_path):
     broker.resolve_instrument.side_effect = insts
 
     # net credit = 1.0+1.0-0.0-0.0 = 2.0; spread_width = 950-930=20 → 10% < 25%
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    _IST = ZoneInfo("Asia/Kolkata")
+
     def _quotes(pairs):
-        q_short = MagicMock(); q_short.bid = Decimal("1.0"); q_short.ask = Decimal("1.1")
-        q_long  = MagicMock(); q_long.bid  = Decimal("0.0"); q_long.ask  = Decimal("0.0")
+        _now = datetime.now(_IST)
+        q_short = MagicMock(); q_short.bid = Decimal("1.0"); q_short.ask = Decimal("1.1"); q_short.timestamp = _now
+        q_long  = MagicMock(); q_long.bid  = Decimal("0.0"); q_long.ask  = Decimal("0.0"); q_long.timestamp = _now
         result = {}
         for tok, _ in pairs:
             if tok in (1, 3):
@@ -300,6 +306,7 @@ def test_min_premium_filter_in_condor_runner(tmp_path):
 
     broker.get_quotes = _quotes
     broker.get_margins = MagicMock(return_value={"equity": {"available": {"live_balance": 100000}}})
+    broker.get_basket_margin = MagicMock(return_value={})
 
     trade_logger = MagicMock()
     ks = MagicMock(); ks.check = MagicMock(); ks.is_active = MagicMock(return_value=False)

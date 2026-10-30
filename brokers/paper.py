@@ -90,6 +90,10 @@ class PaperBroker(BrokerAdapter):
             "note": "paper_mode",
         }
 
+    def get_basket_margin(self, orders: list[dict]) -> dict:
+        """Paper mode — returns empty dict so broker_required_margin stays None."""
+        return {}
+
     def get_index_token(self, underlying: str):
         """Delegate to live source broker."""
         if hasattr(self._source, "get_index_token"):

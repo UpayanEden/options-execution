@@ -43,6 +43,9 @@ logger = logging.getLogger(__name__)
 _ORDER_SPACING_SECONDS = 1.0
 # How many seconds to wait after placing orders before reconciling
 _RECONCILE_WAIT_SECONDS = 5.0
+# Bounded retries for stale quote freshness (10-second threshold)
+_QUOTE_FRESHNESS_RETRIES = 3
+_QUOTE_FRESHNESS_DELAY_S = 1.0
 # Order fill wait polling
 _FILL_POLL_INTERVAL = 2.0
 _FILL_TIMEOUT_SECONDS = 60.0
@@ -387,6 +390,11 @@ class CondorRunner:
         spot = self._get_spot(symbol)
         if spot is None or spot <= 0:
             logger.warning("no_spot_price", extra={"symbol": symbol})
+            self._trade_logger.log(
+                EventType.ENTRY_FAILED, symbol,
+                {"reason": "no_spot_price"},
+                level="WARNING",
+            )
             return None
 
         # ── 2. Find expiry ─────────────────────────────────────────────────
@@ -395,9 +403,20 @@ class CondorRunner:
             self._config.strategy.min_dte,
             self._config.strategy.max_dte,
             expiry_type=stock.expiry_type,
+            pinned_date=stock.expiry_date,
         )
         if expiry is None:
             logger.warning("no_suitable_expiry", extra={"symbol": symbol})
+            self._trade_logger.log(
+                EventType.ENTRY_FAILED, symbol,
+                {
+                    "reason": "no_suitable_expiry",
+                    "min_dte": self._config.strategy.min_dte,
+                    "max_dte": self._config.strategy.max_dte,
+                    "expiry_type": stock.expiry_type,
+                },
+                level="WARNING",
+            )
             return None
 
         # ── No re-entry after exit for this expiry ────────────────────────
@@ -467,40 +486,57 @@ class CondorRunner:
 
         qty = lots * lot_size
 
-        # ── 7. Fetch quotes ────────────────────────────────────────────────
+        # ── 7. Fetch quotes (with bounded staleness retry) ─────────────────
         instrument_pairs = [
             (short_put_inst.instrument_token, short_put_inst.trading_symbol),
             (long_put_inst.instrument_token, long_put_inst.trading_symbol),
             (short_call_inst.instrument_token, short_call_inst.trading_symbol),
             (long_call_inst.instrument_token, long_call_inst.trading_symbol),
         ]
-        try:
-            quotes_by_token = self._broker.get_quotes(instrument_pairs)
-        except QuoteError as exc:
-            logger.warning("quote_fetch_failed", extra={"symbol": symbol, "error": str(exc)})
-            return None
+        quotes_by_sym: Dict[str, Any] = {}
+        for _attempt in range(_QUOTE_FRESHNESS_RETRIES + 1):
+            try:
+                quotes_by_token = self._broker.get_quotes(instrument_pairs)
+            except QuoteError as exc:
+                logger.warning("quote_fetch_failed", extra={"symbol": symbol, "error": str(exc)})
+                return None
 
-        quotes_by_sym = {
-            short_put_inst.trading_symbol: quotes_by_token.get(short_put_inst.instrument_token),
-            long_put_inst.trading_symbol: quotes_by_token.get(long_put_inst.instrument_token),
-            short_call_inst.trading_symbol: quotes_by_token.get(short_call_inst.instrument_token),
-            long_call_inst.trading_symbol: quotes_by_token.get(long_call_inst.instrument_token),
-        }
-        if any(v is None for v in quotes_by_sym.values()):
-            logger.warning("incomplete_quotes", extra={"symbol": symbol})
-            return None
+            quotes_by_sym = {
+                short_put_inst.trading_symbol: quotes_by_token.get(short_put_inst.instrument_token),
+                long_put_inst.trading_symbol: quotes_by_token.get(long_put_inst.instrument_token),
+                short_call_inst.trading_symbol: quotes_by_token.get(short_call_inst.instrument_token),
+                long_call_inst.trading_symbol: quotes_by_token.get(long_call_inst.instrument_token),
+            }
+            if any(v is None for v in quotes_by_sym.values()):
+                logger.warning("incomplete_quotes", extra={"symbol": symbol})
+                return None
 
-        # ── Build limit prices (top of book) ──────────────────────────────
+            now = datetime.now(IST)
+            stale_legs = [
+                sym for sym, q in quotes_by_sym.items()
+                if (now - q.timestamp).total_seconds() > 10
+            ]
+            if not stale_legs:
+                break
+            if _attempt < _QUOTE_FRESHNESS_RETRIES:
+                logger.warning(
+                    "stale_quotes_retrying",
+                    extra={"symbol": symbol, "stale_legs": stale_legs, "attempt": _attempt + 1},
+                )
+                time.sleep(_QUOTE_FRESHNESS_DELAY_S)
+            # On the final attempt, fall through with whatever freshness we have;
+            # QuoteGuard will record the exact ages in the structured guard report.
+
+        # ── Build limit prices (top of book, per-instrument tick) ──────────
         # SELL legs: use best bid (top of buy stack) — what buyers will pay
         # BUY  legs: use best ask (top of sell stack) — what sellers are asking
-        def _round(p: Decimal) -> Decimal:
-            """Round to nearest 0.05 tick."""
-            return (p / Decimal("0.05")).quantize(Decimal("1")) * Decimal("0.05")
+        def _round_to_tick(p: Decimal, tick: Decimal) -> Decimal:
+            return (p / tick).quantize(Decimal("1")) * tick
 
-        short_put_price  = _round(quotes_by_sym[short_put_inst.trading_symbol].bid)
-        long_put_price   = _round(quotes_by_sym[long_put_inst.trading_symbol].ask)
-        short_call_price = _round(quotes_by_sym[short_call_inst.trading_symbol].bid)
-        long_call_price  = _round(quotes_by_sym[long_call_inst.trading_symbol].ask)
+        short_put_price  = _round_to_tick(quotes_by_sym[short_put_inst.trading_symbol].bid, short_put_inst.tick_size)
+        long_put_price   = _round_to_tick(quotes_by_sym[long_put_inst.trading_symbol].ask, long_put_inst.tick_size)
+        short_call_price = _round_to_tick(quotes_by_sym[short_call_inst.trading_symbol].bid, short_call_inst.tick_size)
+        long_call_price  = _round_to_tick(quotes_by_sym[long_call_inst.trading_symbol].ask, long_call_inst.tick_size)
 
         # ── Premium-to-width filter ────────────────────────────────────────
         spread_width = float(short_put_strike - long_put_strike)  # same as call side
@@ -567,8 +603,71 @@ class CondorRunner:
             available_margin = 0.0
             margin_source = ""
 
-        required_margin = self._capital_manager.estimate_margin(
-            spot, lot_size, lots, self._config.strategy.wing_width_pct
+        # ── 8a. Broker basket margin (falls back to estimate on API error) ──
+        basket_orders_for_margin = [
+            {
+                "exchange": "NFO",
+                "tradingsymbol": short_put_inst.trading_symbol,
+                "transaction_type": "SELL",
+                "variety": "regular",
+                "product": "NRML",
+                "order_type": "LIMIT",
+                "quantity": qty,
+                "price": float(short_put_price),
+            },
+            {
+                "exchange": "NFO",
+                "tradingsymbol": long_put_inst.trading_symbol,
+                "transaction_type": "BUY",
+                "variety": "regular",
+                "product": "NRML",
+                "order_type": "LIMIT",
+                "quantity": qty,
+                "price": float(long_put_price),
+            },
+            {
+                "exchange": "NFO",
+                "tradingsymbol": short_call_inst.trading_symbol,
+                "transaction_type": "SELL",
+                "variety": "regular",
+                "product": "NRML",
+                "order_type": "LIMIT",
+                "quantity": qty,
+                "price": float(short_call_price),
+            },
+            {
+                "exchange": "NFO",
+                "tradingsymbol": long_call_inst.trading_symbol,
+                "transaction_type": "BUY",
+                "variety": "regular",
+                "product": "NRML",
+                "order_type": "LIMIT",
+                "quantity": qty,
+                "price": float(long_call_price),
+            },
+        ]
+        broker_required_margin: Optional[float] = None
+        try:
+            margin_result = self._broker.get_basket_margin(basket_orders_for_margin)
+            raw = margin_result.get("required", None)
+            if raw is not None:
+                broker_required_margin = float(raw)
+                logger.info(
+                    "broker_basket_margin_fetched",
+                    extra={"symbol": symbol, "required": round(broker_required_margin, 2)},
+                )
+        except BrokerError as exc:
+            logger.warning(
+                "broker_basket_margin_failed",
+                extra={"symbol": symbol, "error": str(exc)},
+            )
+
+        required_margin = (
+            broker_required_margin
+            if broker_required_margin is not None
+            else self._capital_manager.estimate_margin(
+                spot, lot_size, lots, self._config.strategy.wing_width_pct
+            )
         )
 
         guard_ctx = GuardContext(
@@ -596,6 +695,7 @@ class CondorRunner:
             expected_quantities=expected_quantities,
             expected_prices=expected_prices,
             open_condors_count=len([p for p in self._positions if p.state == "OPEN"]),
+            broker_required_margin=broker_required_margin,
         )
 
         guard_report: GuardReport = run_all_guards(guard_ctx)
@@ -613,6 +713,16 @@ class CondorRunner:
         # ── 9. Allocate capital ────────────────────────────────────────────
         if not self._capital_manager.allocate(symbol, required_margin):
             logger.warning("capital_allocation_failed", extra={"symbol": symbol})
+            self._trade_logger.log(
+                EventType.ENTRY_FAILED, symbol,
+                {
+                    "reason": "capital_allocation_failed",
+                    "required_margin": round(required_margin, 2),
+                    "margin_source": "broker_basket" if broker_required_margin is not None else "wing_width_estimate",
+                    "per_stock_limit": self._config.capital.max_capital_per_stock,
+                },
+                level="WARNING",
+            )
             return None
 
         # ── 10. Place hedge orders first (long put + long call) ────────────
@@ -1716,26 +1826,52 @@ class CondorRunner:
         return (exp + timedelta(7)).month != exp.month
 
     def _find_expiry(
-        self, symbol: str, min_dte: int, max_dte: int, expiry_type: str = "monthly"
+        self,
+        symbol: str,
+        min_dte: int,
+        max_dte: int,
+        expiry_type: str = "monthly",
+        pinned_date: Optional[date] = None,
     ) -> Optional[date]:
         """
         Find the nearest suitable expiry within the DTE window.
 
-        Looks at all available NFO instruments for the symbol, applies the
-        expiry_type filter, then returns the nearest qualifying expiry.
+        If *pinned_date* is set, that date is returned directly (after verifying
+        it exists in NFO instruments for the symbol).  Otherwise, looks at all
+        available NFO instruments, applies the expiry_type filter, and returns
+        the nearest qualifying expiry within the DTE window.
 
         Args:
             symbol:      NSE symbol.
             min_dte:     Minimum days to expiry.
             max_dte:     Maximum days to expiry.
-            expiry_type: ``'monthly'`` — last Thursday of the month only.
+            expiry_type: ``'monthly'`` — last broker-listed expiry per month.
                          ``'weekly'``  — any available expiry (includes weeklies).
+            pinned_date: When set, skip auto-selection and use this exact date.
 
         Returns:
             The best matching expiry date, or None.
         """
         today = datetime.now(IST).date()
         instruments = self._broker._load_instruments() if hasattr(self._broker, "_load_instruments") else []  # type: ignore[attr-defined]
+
+        if pinned_date is not None:
+            # Verify the pinned date exists in NFO instruments for this symbol.
+            available = {
+                (date.fromisoformat(str(i["expiry"])) if isinstance(i.get("expiry"), str) else i["expiry"].date() if hasattr(i.get("expiry"), "date") else i.get("expiry"))
+                for i in instruments
+                if str(i.get("name", "")).upper() == symbol.upper()
+                and i.get("instrument_type", "") in ("CE", "PE")
+                and i.get("expiry") is not None
+            }
+            if pinned_date in available:
+                logger.info("expiry_pinned", extra={"symbol": symbol, "expiry": str(pinned_date)})
+                return pinned_date
+            logger.warning(
+                "pinned_expiry_not_found",
+                extra={"symbol": symbol, "expiry_date": str(pinned_date)},
+            )
+            return None
 
         expiries: set[date] = set()
         for inst in instruments:
@@ -1760,7 +1896,13 @@ class CondorRunner:
         )
 
         if expiry_type == "monthly":
-            candidates = [exp for exp in candidates if self._is_monthly_expiry(exp)]
+            # Use listed contracts so holiday shifts and exchange calendar
+            # changes do not exclude valid monthly expiries. Group before
+            # applying DTE so a weekly cannot become monthly at the boundary.
+            monthly = {}
+            for exp in sorted(expiries):
+                monthly[(exp.year, exp.month)] = exp
+            candidates = [exp for exp in candidates if exp in monthly.values()]
         elif expiry_type == "weekly":
             # NIFTY weekly contracts expire on Thursdays (weekday==3).
             # Accept Tuesday/Wednesday too for holiday-shifted contracts
