@@ -882,11 +882,15 @@ class CondorRunner:
             return
 
         qty = pos.lots * pos.lot_size
+        failed_short_legs: list[str] = []
+        failed_long_legs: list[str] = []
 
         # Close shorts first (buy back), with fill confirmation from Zerodha
         for inst in [pos.short_put, pos.short_call]:
             q = quotes_by_token.get(inst.instrument_token)
-            price = q.ask if q else inst.strike * Decimal("0.005")
+            raw_price = q.ask if q else inst.strike * Decimal("0.005")
+            # Floor at tick_size — Zerodha rejects limit_price=0
+            price = max(raw_price, inst.tick_size)
             order = Order(
                 strategy_run_id=strategy_run_id,
                 leg_index=0,
@@ -901,14 +905,31 @@ class CondorRunner:
             if broker_oid:
                 exit_debit += float(price)
             else:
+                failed_short_legs.append(inst.trading_symbol)
                 logger.error("exit_short_leg_failed_no_fill", extra={
                     "symbol": symbol, "leg": inst.trading_symbol
                 })
 
+        if failed_short_legs:
+            # Short legs still open — position is NOT derisked, keep it alive
+            logger.error("exit_aborted_short_legs_open", extra={
+                "symbol": symbol, "failed": failed_short_legs
+            })
+            self._trade_logger.log(
+                EventType.EXIT_FAILED, symbol,
+                {"reason": reason, "failed_legs": failed_short_legs, "side": "short"},
+                level="ERROR",
+            )
+            pos.state = "OPEN"
+            return
+
         # Sell hedges (receive premium back), with fill confirmation
         for inst in [pos.long_put, pos.long_call]:
             q = quotes_by_token.get(inst.instrument_token)
-            price = q.bid if q else Decimal("0")
+            # Use max(bid, ltp) to avoid LPP rejections when bid < 80% of LTP;
+            # floor at tick_size so we never place a ₹0 limit order.
+            raw_price = max(q.bid, q.ltp) if q else Decimal("0")
+            price = max(raw_price, inst.tick_size)
             order = Order(
                 strategy_run_id=strategy_run_id,
                 leg_index=1,
@@ -922,7 +943,25 @@ class CondorRunner:
             broker_oid = self._place_and_confirm(order)
             if broker_oid:
                 exit_debit -= float(price)
-                self._trade_logger.log_order(order, EventType.ORDER_PLACED)
+            else:
+                failed_long_legs.append(inst.trading_symbol)
+                logger.warning("exit_long_leg_failed_no_fill", extra={
+                    "symbol": symbol, "leg": inst.trading_symbol
+                })
+
+        if failed_long_legs:
+            # Short risk legs are closed; long hedges couldn't be sold.
+            # Log for manual review but proceed with marking position closed
+            # (risk is eliminated; unrealised hedge premium is a minor loss).
+            logger.warning("exit_long_hedges_unsold", extra={
+                "symbol": symbol, "unsold_legs": failed_long_legs
+            })
+            self._trade_logger.log(
+                EventType.EXIT_FAILED, symbol,
+                {"reason": reason, "failed_legs": failed_long_legs, "side": "long_hedge",
+                 "note": "shorts_closed_risk_eliminated"},
+                level="WARNING",
+            )
 
         pnl = (pos.initial_credit - exit_debit) * qty
         pos.state = "CLOSED"
@@ -2082,6 +2121,48 @@ class CondorRunner:
                     self._broker.cancel_order(broker_oid)  # type: ignore[attr-defined]
             except Exception as exc:
                 logger.warning("cancel_unfilled_order_failed", extra={"error": str(exc)})
+
+            # ── Check for partial fill that snuck in before cancel ────────────
+            # A PARTIALLY_FILLED order may have had 1 lot fill before the cancel
+            # was processed. If we skip this, the retry places full qty and we
+            # end up with excess short/long exposure (e.g. COALINDIA -5400 vs -4050).
+            time.sleep(0.5)
+            filled_before_cancel = 0
+            try:
+                if hasattr(self._broker, "get_order_status_raw"):
+                    raw = self._broker.get_order_status_raw(broker_oid)  # type: ignore[attr-defined]
+                    filled_before_cancel = int(raw.get("filled_quantity", 0) or 0)
+            except Exception as exc:
+                logger.warning("post_cancel_status_check_failed", extra={
+                    "broker_oid": broker_oid, "error": str(exc)
+                })
+
+            if filled_before_cancel > 0:
+                logger.warning("partial_fill_before_cancel", extra={
+                    "symbol": current_order.trading_symbol,
+                    "broker_oid": broker_oid,
+                    "partial_qty": filled_before_cancel,
+                    "original_qty": current_order.quantity,
+                })
+                if filled_before_cancel >= current_order.quantity:
+                    # Full fill — cancel arrived too late; treat as confirmed
+                    self._trade_logger.log(
+                        EventType.ORDER_CONFIRMED,
+                        current_order.trading_symbol,
+                        {
+                            "broker_order_id": broker_oid,
+                            "side": current_order.side.value,
+                            "fill_price": str(current_order.limit_price),
+                            "quantity": current_order.quantity,
+                            "attempt": attempt,
+                        },
+                        level="INFO",
+                    )
+                    return broker_oid
+                # Partial — retry only for the unfilled remainder
+                current_order = current_order.model_copy(
+                    update={"quantity": current_order.quantity - filled_before_cancel}
+                )
 
             if attempt < _MAX_ORDER_RETRIES:
                 # Retry with a more aggressive price (cross the spread wider)
