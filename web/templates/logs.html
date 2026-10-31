@@ -93,8 +93,8 @@
                     <tr class="log-row-{{ level }} cursor-pointer"
                         onclick="toggleDetail('{{ detail_id }}')"
                         style="cursor: pointer;">
-                        <td class="ps-3 timestamp-cell">
-                            {{ (ev.get('ts', '') or '')[-8:][:8] if (ev.get('ts', '') or '')|length > 8 else ev.get('ts', '—') }}
+                        <td class="ps-3 timestamp-cell" data-ts="{{ ev.get('ts', '') }}">
+                            {{ ev.get('ts', '—') }}
                         </td>
                         <td>
                             {% if level == 'INFO' %}
@@ -167,5 +167,20 @@ function toggleDetail(id) {
         row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
     }
 }
+
+// Reformat all timestamp cells to readable IST: "30 Oct 09:15:06"
+document.querySelectorAll('.timestamp-cell[data-ts]').forEach(function(cell) {
+    const raw = cell.dataset.ts;
+    if (!raw) return;
+    try {
+        const d = new Date(raw);
+        if (isNaN(d)) return;
+        const day   = d.toLocaleString('en-IN', { day: '2-digit',   timeZone: 'Asia/Kolkata' });
+        const month = d.toLocaleString('en-IN', { month: 'short',   timeZone: 'Asia/Kolkata' });
+        const time  = d.toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit',
+                                                   hour12: false,   timeZone: 'Asia/Kolkata' });
+        cell.textContent = day + ' ' + month + ' ' + time;
+    } catch(e) {}
+});
 </script>
 {% endblock %}
