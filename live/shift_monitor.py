@@ -106,6 +106,9 @@ class ShiftMonitor:
         self._ban_hold_logged: set = set()
         # Periodic reconciliation cycle counter (Section 5)
         self._recon_cycle: int = 0
+        # Per-position consecutive stop-loss breach counters (Task 4)
+        # Key: position id (id(pos)) → consecutive breach count
+        self._sl_breach_count: Dict[int, int] = {}
         logger.info("shift_monitor_created")
 
     # ── Public control API ─────────────────────────────────────────────────
@@ -564,6 +567,105 @@ class ShiftMonitor:
                             )
             except Exception as _exc:
                 logger.debug("profit_target_check_error", extra={"symbol": symbol, "error": str(_exc)})
+
+        # ── 3c. Stop-loss check ───────────────────────────────────────────
+        sl_multiple = getattr(self._config.strategy, "stop_loss_credit_multiple", None)
+        sl_inr      = getattr(self._config.strategy, "stop_loss_inr", None)
+        sl_confirms = int(getattr(self._config.strategy, "stop_loss_confirm_checks", 2))
+
+        if (sl_multiple is not None or sl_inr is not None) and options_cache is not None:
+            try:
+                # Reuse natural close debit keys (same as profit target block)
+                sp_ask_key = f"{pos.short_put.trading_symbol}:ask"
+                sc_ask_key = f"{pos.short_call.trading_symbol}:ask"
+                lp_bid_key = f"{pos.long_put.trading_symbol}:bid"
+                lc_bid_key = f"{pos.long_call.trading_symbol}:bid"
+                sp_ltp_key = f"{pos.short_put.trading_symbol}:ltp"
+                sc_ltp_key = f"{pos.short_call.trading_symbol}:ltp"
+                lp_ltp_key = f"{pos.long_put.trading_symbol}:ltp"
+                lc_ltp_key = f"{pos.long_call.trading_symbol}:ltp"
+
+                sl_keys_ok = all(
+                    k in options_cache
+                    for k in (sp_ask_key, sc_ask_key, lp_bid_key, lc_bid_key)
+                )
+                if sl_keys_ok:
+                    def _sl_ask(ask_k: str, ltp_k: str) -> float:
+                        v = options_cache.get(ask_k, 0.0)
+                        return v if v > 0 else options_cache.get(ltp_k, 0.0)
+
+                    def _sl_bid(bid_k: str, ltp_k: str) -> float:
+                        v = options_cache.get(bid_k, 0.0)
+                        return v if v > 0 else options_cache.get(ltp_k, 0.0)
+
+                    sl_sp_ask = _sl_ask(sp_ask_key, sp_ltp_key)
+                    sl_sc_ask = _sl_ask(sc_ask_key, sc_ltp_key)
+                    sl_lp_bid = _sl_bid(lp_bid_key, lp_ltp_key)
+                    sl_lc_bid = _sl_bid(lc_bid_key, lc_ltp_key)
+
+                    sl_close_debit = (sl_sp_ask + sl_sc_ask) - (sl_lp_bid + sl_lc_bid)
+
+                    # Skip check if data looks stale/invalid (close_debit < 0)
+                    if sl_close_debit >= 0:
+                        original_credit = float(getattr(pos, "original_credit", 0.0) or 0.0)
+                        per_unit_loss   = sl_close_debit - original_credit  # positive = losing
+
+                        sl_triggered = False
+                        sl_reason    = ""
+
+                        if sl_multiple is not None and original_credit > 0:
+                            if per_unit_loss >= original_credit * float(sl_multiple):
+                                sl_triggered = True
+                                sl_reason = (
+                                    f"loss={per_unit_loss:.4f} >= "
+                                    f"{sl_multiple}× credit={original_credit:.4f}"
+                                )
+
+                        if not sl_triggered and sl_inr is not None:
+                            lots     = int(getattr(pos, "lots", 1) or 1)
+                            lot_size = int(getattr(pos, "lot_size", 1) or 1)
+                            loss_inr = per_unit_loss * lots * lot_size
+                            if loss_inr >= float(sl_inr):
+                                sl_triggered = True
+                                sl_reason = (
+                                    f"loss_inr={loss_inr:.0f} >= sl_inr={sl_inr:.0f}"
+                                )
+
+                        pos_id = id(pos)
+                        if sl_triggered:
+                            self._sl_breach_count[pos_id] = (
+                                self._sl_breach_count.get(pos_id, 0) + 1
+                            )
+                            breach_n = self._sl_breach_count[pos_id]
+                            logger.debug(
+                                "stop_loss_breach",
+                                extra={
+                                    "symbol": symbol,
+                                    "breach_count": breach_n,
+                                    "required": sl_confirms,
+                                    "reason": sl_reason,
+                                },
+                            )
+                            if breach_n >= sl_confirms:
+                                self._trade_logger.log(
+                                    EventType.STOP_LOSS_EXIT,
+                                    symbol,
+                                    {
+                                        "original_credit": round(original_credit, 4),
+                                        "close_debit": round(sl_close_debit, 4),
+                                        "per_unit_loss": round(per_unit_loss, 4),
+                                        "breach_count": breach_n,
+                                        "reason": sl_reason,
+                                    },
+                                    level="ERROR",
+                                )
+                                self._sl_breach_count.pop(pos_id, None)
+                                return "STOP_LOSS_EXIT", sl_reason
+                        else:
+                            # Reset consecutive counter on a clean cycle
+                            self._sl_breach_count.pop(pos_id, None)
+            except Exception as _exc:
+                logger.debug("stop_loss_check_error", extra={"symbol": symbol, "error": str(_exc)})
 
         # ── 4. Shift checks ────────────────────────────────────────────────
         shift_trigger_pct = self._config.strategy.shift_trigger_pct

@@ -90,6 +90,7 @@ class EventType(str, Enum):
     FNO_BAN_HOLD = "FNO_BAN_HOLD"
     FNO_BAN_LIFTED = "FNO_BAN_LIFTED"
     PROFIT_TARGET_EXIT = "PROFIT_TARGET_EXIT"
+    STOP_LOSS_EXIT = "STOP_LOSS_EXIT"
 
 
 # ── Custom JSON formatter ──────────────────────────────────────────────────

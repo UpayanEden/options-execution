@@ -141,6 +141,16 @@ class StrategyParams:
     profit_target_pct: float = 85.0
     """Exit when profit captured >= this % of original_credit."""
 
+    stop_loss_credit_multiple: Optional[float] = None
+    """Exit when loss >= this multiple of original_credit (e.g. 2.0 = 2× credit). None = disabled."""
+
+    stop_loss_inr: Optional[float] = None
+    """Exit when loss >= this absolute INR amount (lots × lot_size × per-unit-loss). None = disabled."""
+
+    stop_loss_confirm_checks: int = 2
+    """Number of consecutive monitoring cycles that must breach the stop-loss before exiting.
+    Reduces false exits from momentary price spikes (default: 2)."""
+
     min_entry_premium_pct: float = 25.0
     """Minimum net credit as % of spread width required at entry. Entries with lower premium are skipped."""
 
