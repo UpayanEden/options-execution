@@ -736,3 +736,48 @@ class TestSnapToStrike:
     def test_empty_list_returns_target(self, tmp_path):
         runner, _, _ = _make_runner(tmp_path=tmp_path)
         assert runner._snap_to_strike(2650.0, []) == 2650.0
+
+    # ── OTM bias tests (Task 5) ────────────────────────────────────────────
+
+    def test_put_otm_snaps_to_floor(self, tmp_path):
+        """put 386 with [370,380,390] → 380 (highest ≤ 386)."""
+        runner, _, _ = _make_runner(tmp_path=tmp_path)
+        result = runner._snap_to_strike(386.0, [370.0, 380.0, 390.0], prefer_otm=True, option_type="PE")
+        assert result == 380.0
+
+    def test_put_otm_exact_match(self, tmp_path):
+        """put 380 with [370,380,390] → 380 (exact match at floor)."""
+        runner, _, _ = _make_runner(tmp_path=tmp_path)
+        result = runner._snap_to_strike(380.0, [370.0, 380.0, 390.0], prefer_otm=True, option_type="PE")
+        assert result == 380.0
+
+    def test_put_otm_below_all_clamps_to_first(self, tmp_path):
+        """put 360 with [370,380,390] → 370 (target below all → use lowest)."""
+        runner, _, _ = _make_runner(tmp_path=tmp_path)
+        result = runner._snap_to_strike(360.0, [370.0, 380.0, 390.0], prefer_otm=True, option_type="PE")
+        assert result == 370.0
+
+    def test_call_otm_snaps_to_ceil(self, tmp_path):
+        """call 414 with [400,410,420] → 420 (lowest ≥ 414)."""
+        runner, _, _ = _make_runner(tmp_path=tmp_path)
+        result = runner._snap_to_strike(414.0, [400.0, 410.0, 420.0], prefer_otm=True, option_type="CE")
+        assert result == 420.0
+
+    def test_call_otm_exact_match(self, tmp_path):
+        """call 420 with [400,410,420] → 420 (exact match at ceil)."""
+        runner, _, _ = _make_runner(tmp_path=tmp_path)
+        result = runner._snap_to_strike(420.0, [400.0, 410.0, 420.0], prefer_otm=True, option_type="CE")
+        assert result == 420.0
+
+    def test_call_otm_above_all_clamps_to_last(self, tmp_path):
+        """call 440 with [400,410,420] → 420 (target above all → use highest)."""
+        runner, _, _ = _make_runner(tmp_path=tmp_path)
+        result = runner._snap_to_strike(440.0, [400.0, 410.0, 420.0], prefer_otm=True, option_type="CE")
+        assert result == 420.0
+
+    def test_default_mode_unchanged_by_prefer_otm_false(self, tmp_path):
+        """prefer_otm=False keeps nearest-neighbour behaviour."""
+        runner, _, _ = _make_runner(tmp_path=tmp_path)
+        # 386 nearest neighbour is 390 (diff 4 vs 6)
+        result = runner._snap_to_strike(386.0, [370.0, 380.0, 390.0], prefer_otm=False)
+        assert result == 390.0

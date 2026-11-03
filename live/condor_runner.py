@@ -455,10 +455,10 @@ class CondorRunner:
             logger.warning("no_available_strikes", extra={"symbol": symbol, "expiry": str(expiry)})
             return None
 
-        short_put_strike = self._snap_to_strike(short_put_target, available_puts)
-        long_put_strike = self._snap_to_strike(long_put_target, available_puts)
-        short_call_strike = self._snap_to_strike(short_call_target, available_calls)
-        long_call_strike = self._snap_to_strike(long_call_target, available_calls)
+        short_put_strike  = self._snap_to_strike(short_put_target,  available_puts,  prefer_otm=True, option_type="PE")
+        long_put_strike   = self._snap_to_strike(long_put_target,   available_puts,  prefer_otm=True, option_type="PE")
+        short_call_strike = self._snap_to_strike(short_call_target, available_calls, prefer_otm=True, option_type="CE")
+        long_call_strike  = self._snap_to_strike(long_call_target,  available_calls, prefer_otm=True, option_type="CE")
 
         # ── 5. Resolve instruments ─────────────────────────────────────────
         try:
@@ -1193,8 +1193,8 @@ class CondorRunner:
         if trigger_side == "PUT":
             new_short_target = spot * (1.0 - effective_put_dist / 100.0)
             new_long_target  = new_short_target - wing_width
-            new_short_strike = self._snap_to_strike(new_short_target, available_puts)
-            new_long_strike  = self._snap_to_strike(new_long_target,  available_puts)
+            new_short_strike = self._snap_to_strike(new_short_target, available_puts, prefer_otm=True, option_type="PE")
+            new_long_strike  = self._snap_to_strike(new_long_target,  available_puts, prefer_otm=True, option_type="PE")
 
             # Section 1: Validate new short strike is not too close
             put_min_interval = (available_puts[1] - available_puts[0]) if len(available_puts) > 1 else 50.0
@@ -1204,7 +1204,7 @@ class CondorRunner:
                 idx = _i if _i < len(available_puts) and available_puts[_i] == new_short_strike else -1
                 if idx > 0:
                     new_short_strike = available_puts[idx - 1]
-                    new_long_strike = self._snap_to_strike(new_short_strike - wing_width, available_puts)
+                    new_long_strike = self._snap_to_strike(new_short_strike - wing_width, available_puts, prefer_otm=True, option_type="PE")
                 if spot < new_short_strike * (1.0 + shift_trigger_pct / 100.0):
                     logger.warning("shift_abort_strike_too_close_put", extra={"symbol": symbol, "spot": spot, "new_short_strike": new_short_strike})
                     self._trade_logger.log(
@@ -1243,8 +1243,8 @@ class CondorRunner:
         else:
             new_short_target = spot * (1.0 + effective_call_dist / 100.0)
             new_long_target  = new_short_target + wing_width
-            new_short_strike = self._snap_to_strike(new_short_target, available_calls)
-            new_long_strike  = self._snap_to_strike(new_long_target,  available_calls)
+            new_short_strike = self._snap_to_strike(new_short_target, available_calls, prefer_otm=True, option_type="CE")
+            new_long_strike  = self._snap_to_strike(new_long_target,  available_calls, prefer_otm=True, option_type="CE")
 
             # Section 1: Validate new short strike is not too close
             call_min_interval = (available_calls[1] - available_calls[0]) if len(available_calls) > 1 else 50.0
@@ -1254,7 +1254,7 @@ class CondorRunner:
                 idx = _i if _i < len(available_calls) and available_calls[_i] == new_short_strike else -1
                 if idx >= 0 and idx < len(available_calls) - 1:
                     new_short_strike = available_calls[idx + 1]
-                    new_long_strike = self._snap_to_strike(new_short_strike + wing_width, available_calls)
+                    new_long_strike = self._snap_to_strike(new_short_strike + wing_width, available_calls, prefer_otm=True, option_type="CE")
                 if spot > new_short_strike * (1.0 - shift_trigger_pct / 100.0):
                     logger.warning("shift_abort_strike_too_close_call", extra={"symbol": symbol, "spot": spot, "new_short_strike": new_short_strike})
                     self._trade_logger.log(
@@ -2022,19 +2022,52 @@ class CondorRunner:
             return None
         return candidates[0]
 
-    def _snap_to_strike(self, target_strike: float, available_strikes: List[float]) -> float:
+    def _snap_to_strike(
+        self,
+        target_strike: float,
+        available_strikes: List[float],
+        prefer_otm: bool = False,
+        option_type: str = "CE",
+    ) -> float:
         """
-        Return the available strike nearest to *target_strike*.
+        Return the available strike closest to *target_strike*.
+
+        When *prefer_otm* is True the snap direction is biased to stay OTM:
+          - Puts  (option_type="PE"): return the highest strike ≤ target
+            (further below spot → deeper OTM put).
+          - Calls (option_type="CE"): return the lowest strike ≥ target
+            (further above spot → deeper OTM call).
+
+        Without *prefer_otm* (default) the nearest-neighbour is returned as
+        before, which preserves backward-compatibility for all existing callers.
 
         Args:
             target_strike:     Ideal target strike price.
-            available_strikes: Sorted list of available strikes (must be sorted).
+            available_strikes: Sorted list of available strikes (ascending).
+            prefer_otm:        When True, snap OTM (floor for puts, ceil for calls).
+            option_type:       "PE" or "CE" — used only when prefer_otm=True.
 
         Returns:
-            Nearest available strike.
+            Best matching available strike.
         """
         if not available_strikes:
             return target_strike
+
+        if prefer_otm:
+            if option_type == "PE":
+                # Highest strike ≤ target (floor)
+                idx = bisect.bisect_right(available_strikes, target_strike) - 1
+                if idx < 0:
+                    return available_strikes[0]
+                return available_strikes[idx]
+            else:
+                # Lowest strike ≥ target (ceil)
+                idx = bisect.bisect_left(available_strikes, target_strike)
+                if idx >= len(available_strikes):
+                    return available_strikes[-1]
+                return available_strikes[idx]
+
+        # Default: nearest neighbour
         pos = bisect.bisect_left(available_strikes, target_strike)
         if pos == 0:
             return available_strikes[0]

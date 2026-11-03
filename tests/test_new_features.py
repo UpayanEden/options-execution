@@ -333,7 +333,7 @@ def test_min_premium_filter_in_condor_runner(tmp_path):
         patch.object(runner, "_find_expiry", return_value=future_expiry),
         patch.object(runner, "_get_available_strikes",
                      return_value=([930.0, 950.0, 970.0], [1030.0, 1050.0, 1070.0])),
-        patch.object(runner, "_snap_to_strike", side_effect=lambda t, av: min(av, key=lambda x: abs(x-t))),
+        patch.object(runner, "_snap_to_strike", side_effect=lambda t, av, **kw: min(av, key=lambda x: abs(x-t))),
         patch.object(runner, "_get_broker_positions", return_value=[]),
         patch.object(runner, "_get_recent_orders", return_value=[]),
     ):
