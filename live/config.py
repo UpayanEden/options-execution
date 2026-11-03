@@ -151,6 +151,10 @@ class StrategyParams:
     """Number of consecutive monitoring cycles that must breach the stop-loss before exiting.
     Reduces false exits from momentary price spikes (default: 2)."""
 
+    max_daily_loss_inr: Optional[float] = None
+    """Intraday circuit breaker: activate kill switch when session realized loss
+    (sum of closed-position PnL) exceeds this INR amount. None = disabled."""
+
     entry_completion_buffer_min: int = 20
     """Minutes required to complete an entry after it starts. No new entries will be
     initiated if now + buffer > effective_cutoff (min of entry_end and 15:15 IST)."""

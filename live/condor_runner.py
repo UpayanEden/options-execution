@@ -192,6 +192,9 @@ class CondorRunner:
         self._position_store = PositionStore()
         self._session_id = str(uuid.uuid4())[:8]
         self._last_order_error_msg: str = ""
+        # Cumulative realized PnL for this session (sum of closed-position PnL).
+        # Used by the intraday daily-loss circuit breaker.
+        self._session_pnl: float = 0.0
         logger.info("condor_runner_init", extra={"session_id": self._session_id, "mode": config.mode})
 
     # ── Session entry point ────────────────────────────────────────────────
@@ -1090,6 +1093,10 @@ class CondorRunner:
         self._position_store.close_position(pos, pnl=pnl)
         self._position_store.mark_exited_expiry(pos.symbol, str(pos.expiry), reason)
 
+        # Accumulate session PnL and check daily-loss circuit breaker
+        self._session_pnl += pnl
+        self._check_daily_loss_circuit_breaker()
+
         self._trade_logger.log_exit(
             symbol=symbol,
             reason=reason,
@@ -1111,6 +1118,40 @@ class CondorRunner:
                 "exit_debit": round(exit_debit, 4),
             },
         )
+
+    def _check_daily_loss_circuit_breaker(self) -> None:
+        """
+        Fire the kill switch if session realized loss exceeds max_daily_loss_inr.
+
+        Called after every position close. Non-fatal if max_daily_loss_inr is not
+        configured (None). Uses the cumulative _session_pnl which is updated each
+        time a position is closed via exit_condor.
+        """
+        max_loss = getattr(self._config.strategy, "max_daily_loss_inr", None)
+        if max_loss is None:
+            return
+        if self._session_pnl <= -float(max_loss):
+            logger.critical(
+                "daily_loss_circuit_breaker",
+                extra={
+                    "session_pnl": round(self._session_pnl, 2),
+                    "max_daily_loss_inr": max_loss,
+                },
+            )
+            self._trade_logger.log(
+                EventType.KILL_SWITCH_ACTIVATED,
+                None,
+                {
+                    "reason": "daily_loss_circuit_breaker",
+                    "session_pnl": round(self._session_pnl, 2),
+                    "max_daily_loss_inr": max_loss,
+                },
+                level="CRITICAL",
+            )
+            try:
+                self._kill_switch.activate()
+            except Exception as _exc:
+                logger.error("kill_switch_activate_failed", extra={"error": str(_exc)})
 
     def _handle_exit(self, pos: CondorPosition, reason: str) -> None:
         """
