@@ -244,6 +244,26 @@ class CondorRunner:
         except Exception as _bl_exc:
             logger.warning("ban_list_startup_refresh_failed", extra={"error": str(_bl_exc)})
 
+        # ── Warm instrument index ──────────────────────────────────────────
+        # Build O(1) lookup structures before the entry loop so the first
+        # resolve_instrument() call is not a cold O(n) pass.
+        if hasattr(self._broker, "warm_index"):
+            try:
+                idx_size = self._broker.warm_index()
+                if idx_size == 0:
+                    logger.error(
+                        "instrument_index_empty_after_warm",
+                        extra={"broker": type(self._broker).__name__},
+                    )
+                    # Non-fatal: continue — lazy fallback will trigger on first use
+                else:
+                    logger.info(
+                        "instrument_index_ready",
+                        extra={"size": idx_size},
+                    )
+            except Exception as _wi_exc:
+                logger.warning("instrument_index_warm_failed", extra={"error": str(_wi_exc)})
+
         # ── Entry phase ────────────────────────────────────────────────────
         now = datetime.now(IST)
         entry_start = self._config.strategy.entry_start

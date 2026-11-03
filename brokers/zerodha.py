@@ -191,6 +191,31 @@ class ZerodhaBroker(BrokerAdapter):
             k: (sorted(v[0]), sorted(v[1])) for k, v in strikes_sets.items()
         }
 
+    def warm_index(self) -> int:
+        """
+        Eagerly load the NFO instrument master and build the O(1) index.
+
+        Call once at session startup so the first entry does not pay the
+        warm-up cost. Returns the number of CE/PE instruments indexed.
+
+        Raises BrokerError if the instrument fetch fails.
+        """
+        import time as _time
+        t0 = _time.monotonic()
+        self._load_instruments()
+        # _load_instruments() may return early without building the index when
+        # _instruments is already set (e.g. pre-loaded in tests). Build explicitly.
+        if getattr(self, "_instrument_index", None) is None:
+            instruments = getattr(self, "_instruments", None) or []
+            self._build_instrument_indexes(instruments)
+        elapsed = _time.monotonic() - t0
+        size = len(self._instrument_index or {})
+        logger.info(
+            "instrument_index_warmed",
+            extra={"size": size, "load_time_s": round(elapsed, 3)},
+        )
+        return size
+
     def get_expiries(self, symbol: str) -> List[date]:
         """Return sorted list of all expiry dates available for *symbol*. O(1)."""
         if getattr(self, "_instrument_index", None) is None:
