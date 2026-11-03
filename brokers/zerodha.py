@@ -63,6 +63,14 @@ class ZerodhaBroker(BrokerAdapter):
         self._kite.set_access_token(access_token)
         self._cache_path = Path(instrument_cache_path)
         self._instruments: Optional[list[dict]] = None  # loaded lazily
+        # Index built from instrument master for O(1) resolve_instrument lookups.
+        # Key: (name_upper, expiry_date, option_type_upper, strike_decimal)
+        self._instrument_index: Dict[tuple, dict] = {}
+        # Secondary indexes for expiry/strike lookups in condor_runner.
+        # _expiry_index:  name_upper → sorted list[date]
+        # _strikes_index: (name_upper, expiry) → (sorted puts list[float], sorted calls list[float])
+        self._expiry_index: Dict[str, list] = {}
+        self._strikes_index: Dict[tuple, tuple] = {}
         logger.info("zerodha_broker_initialized")
 
     # ── Instrument master ──────────────────────────────────────────────────
@@ -88,6 +96,7 @@ class ZerodhaBroker(BrokerAdapter):
 
         self._write_cache(raw)
         self._instruments = raw
+        self._build_instrument_indexes(raw)
         logger.info("instrument_master_loaded", extra={"count": len(raw)})
         return self._instruments
 
@@ -117,7 +126,82 @@ class ZerodhaBroker(BrokerAdapter):
             for row in reader:
                 rows.append(row)
         logger.debug("instrument_cache_read", extra={"rows": len(rows)})
+        self._build_instrument_indexes(rows)
         return rows
+
+    def _build_instrument_indexes(self, instruments: list[dict]) -> None:
+        """
+        Build O(1) lookup structures from the raw instrument list.
+        Called once after load/cache-read — pays the O(n) cost once so that
+        all subsequent resolve_instrument / get_expiries / get_strikes calls
+        are O(1) or O(log k) at most.
+        """
+        inst_index: Dict[tuple, dict] = {}
+        expiry_sets: Dict[str, set] = {}
+        strikes_sets: Dict[tuple, tuple] = {}  # (name, expiry) → (puts_set, calls_set)
+
+        for inst in instruments:
+            itype = inst.get("instrument_type", "")
+            if itype not in ("CE", "PE"):
+                continue
+            name = str(inst.get("name", "")).upper()
+            if not name:
+                continue
+            raw_exp = inst.get("expiry")
+            if isinstance(raw_exp, str):
+                try:
+                    exp: date = date.fromisoformat(raw_exp)
+                except ValueError:
+                    continue
+            elif hasattr(raw_exp, "date"):
+                exp = raw_exp.date()
+            elif isinstance(raw_exp, date):
+                exp = raw_exp
+            else:
+                continue
+            try:
+                strike = Decimal(str(inst.get("strike", 0)))
+            except Exception:
+                continue
+
+            # Primary index: exact resolve key
+            inst_index[(name, exp, itype, strike)] = inst
+
+            # Expiry index
+            if name not in expiry_sets:
+                expiry_sets[name] = set()
+            expiry_sets[name].add(exp)
+
+            # Strikes index
+            sk = (name, exp)
+            if sk not in strikes_sets:
+                strikes_sets[sk] = (set(), set())
+            try:
+                f_strike = float(strike)
+            except Exception:
+                continue
+            if itype == "PE":
+                strikes_sets[sk][0].add(f_strike)
+            else:
+                strikes_sets[sk][1].add(f_strike)
+
+        self._instrument_index = inst_index
+        self._expiry_index = {name: sorted(exps) for name, exps in expiry_sets.items()}
+        self._strikes_index = {
+            k: (sorted(v[0]), sorted(v[1])) for k, v in strikes_sets.items()
+        }
+
+    def get_expiries(self, symbol: str) -> List[date]:
+        """Return sorted list of all expiry dates available for *symbol*. O(1)."""
+        if not self._instrument_index:
+            self._load_instruments()
+        return self._expiry_index.get(symbol.upper(), [])
+
+    def get_strikes(self, symbol: str, expiry: date) -> tuple:
+        """Return (sorted_puts, sorted_calls) for *symbol* on *expiry*. O(1)."""
+        if not self._instrument_index:
+            self._load_instruments()
+        return self._strikes_index.get((symbol.upper(), expiry), ([], []))
 
     # ── BrokerAdapter: resolve_instrument ─────────────────────────────────
 
@@ -134,60 +218,15 @@ class ZerodhaBroker(BrokerAdapter):
         Matches on: underlying name, exchange, expiry date, strike, CE/PE.
         Raises InstrumentNotFoundError if not found.
         """
-        instruments = self._load_instruments()
+        if not self._instrument_index:
+            self._load_instruments()
         opt_type_upper = option_type.upper()
-
-        candidates = []
-        for inst in instruments:
-            # instrument_type is CE or PE for options
-            if inst.get("instrument_type", "") not in ("CE", "PE"):
-                continue
-            if inst.get("instrument_type", "") != opt_type_upper:
-                continue
-
-            # underlying name: 'name' field in Kite instruments
-            inst_name = str(inst.get("name", "")).upper()
-            if inst_name != underlying.upper():
-                continue
-
-            # expiry: comes as date or string "YYYY-MM-DD"
-            inst_expiry = inst.get("expiry")
-            if isinstance(inst_expiry, str):
-                try:
-                    inst_expiry = date.fromisoformat(inst_expiry)
-                except ValueError:
-                    continue
-            elif hasattr(inst_expiry, "date"):
-                inst_expiry = inst_expiry.date()
-
-            if inst_expiry != expiry:
-                continue
-
-            # strike: comes as float or string
-            try:
-                inst_strike = Decimal(str(inst.get("strike", 0)))
-            except Exception:
-                continue
-
-            if inst_strike != strike:
-                continue
-
-            candidates.append(inst)
-
-        if not candidates:
+        key = (underlying.upper(), expiry, opt_type_upper, strike)
+        inst = self._instrument_index.get(key)
+        if inst is None:
             raise InstrumentNotFoundError(
                 f"No instrument found: {underlying} {expiry} {strike} {option_type} on {exchange}"
             )
-
-        if len(candidates) > 1:
-            logger.warning(
-                "multiple_instruments_found",
-                extra={"underlying": underlying, "expiry": str(expiry),
-                       "strike": str(strike), "option_type": option_type,
-                       "count": len(candidates)},
-            )
-
-        inst = candidates[0]
         try:
             lot_size = int(inst.get("lot_size", 0))
             tick_size = Decimal(str(inst.get("tick_size", "0.05")))

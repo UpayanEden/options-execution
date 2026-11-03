@@ -199,7 +199,10 @@ class ShiftMonitor:
                         spot_cache = self._broker.get_equity_spots_batch(underlyings)  # type: ignore[attr-defined]
                         all_spots_null = all(v is None or v <= 0 for v in spot_cache.values()) if spot_cache else True
 
-                # Build options_cache: single batch quote call for all 4 legs of each position
+                # Build options_cache: single batch quote call for all 4 legs of each position.
+                # One pass collects instrument_pairs and a flat (tok, tsym) list together,
+                # eliminating the second O(positions×4) loop that previously re-iterated
+                # current_positions just to index into raw_quotes.
                 options_cache: Optional[Dict[str, float]] = None
                 try:
                     instrument_pairs: List[tuple] = []
@@ -213,21 +216,13 @@ class ShiftMonitor:
                                     instrument_pairs.append((tok, tsym))
                     if instrument_pairs and hasattr(self._broker, "get_quotes"):
                         raw_quotes = self._broker.get_quotes(instrument_pairs)  # type: ignore[attr-defined]
-                        # Build keyed by trading_symbol for easy lookup
                         options_cache = {}
-                        for p in current_positions:
-                            for leg_attr in ("short_put", "long_put", "short_call", "long_call"):
-                                inst = getattr(p, leg_attr, None)
-                                if inst is not None:
-                                    tok = getattr(inst, "instrument_token", None)
-                                    tsym = getattr(inst, "trading_symbol", None)
-                                    if tok and tsym and tok in raw_quotes:
-                                        q = raw_quotes[tok]
-                                        # Store both bid and ask keyed by trading_symbol
-                                        options_cache[f"{tsym}:bid"] = float(getattr(q, "bid", 0) or 0)
-                                        options_cache[f"{tsym}:ask"] = float(getattr(q, "ask", 0) or 0)
-                                        ltp = float(getattr(q, "ltp", 0) or 0)
-                                        options_cache[f"{tsym}:ltp"] = ltp
+                        for tok, tsym in instrument_pairs:
+                            if tok in raw_quotes:
+                                q = raw_quotes[tok]
+                                options_cache[f"{tsym}:bid"] = float(getattr(q, "bid", 0) or 0)
+                                options_cache[f"{tsym}:ask"] = float(getattr(q, "ask", 0) or 0)
+                                options_cache[f"{tsym}:ltp"] = float(getattr(q, "ltp", 0) or 0)
                 except QuoteError:
                     options_cache = None
                 except Exception as _exc:

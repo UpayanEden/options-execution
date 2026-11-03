@@ -13,6 +13,7 @@ All order placements go through run_all_guards() — never bypassed.
 """
 from __future__ import annotations
 
+import bisect
 import json
 import logging
 import time
@@ -1134,7 +1135,8 @@ class CondorRunner:
             put_min_interval = (available_puts[1] - available_puts[0]) if len(available_puts) > 1 else 50.0
             if spot < new_short_strike * (1.0 + shift_trigger_pct / 100.0):
                 # Try one step further out (lower for puts)
-                idx = available_puts.index(new_short_strike) if new_short_strike in available_puts else -1
+                _i = bisect.bisect_left(available_puts, new_short_strike)
+                idx = _i if _i < len(available_puts) and available_puts[_i] == new_short_strike else -1
                 if idx > 0:
                     new_short_strike = available_puts[idx - 1]
                     new_long_strike = self._snap_to_strike(new_short_strike - wing_width, available_puts)
@@ -1183,7 +1185,8 @@ class CondorRunner:
             call_min_interval = (available_calls[1] - available_calls[0]) if len(available_calls) > 1 else 50.0
             if spot > new_short_strike * (1.0 - shift_trigger_pct / 100.0):
                 # Try one step further out (higher for calls)
-                idx = available_calls.index(new_short_strike) if new_short_strike in available_calls else -1
+                _i = bisect.bisect_left(available_calls, new_short_strike)
+                idx = _i if _i < len(available_calls) and available_calls[_i] == new_short_strike else -1
                 if idx >= 0 and idx < len(available_calls) - 1:
                     new_short_strike = available_calls[idx + 1]
                     new_long_strike = self._snap_to_strike(new_short_strike + wing_width, available_calls)
@@ -1892,18 +1895,14 @@ class CondorRunner:
             The best matching expiry date, or None.
         """
         today = datetime.now(IST).date()
-        instruments = self._broker._load_instruments() if hasattr(self._broker, "_load_instruments") else []  # type: ignore[attr-defined]
+        # Use broker's pre-built expiry index — O(1) instead of O(n) instrument scan.
+        if hasattr(self._broker, "get_expiries"):
+            all_expiries: List[date] = self._broker.get_expiries(symbol)  # type: ignore[attr-defined]
+        else:
+            all_expiries = []
 
         if pinned_date is not None:
-            # Verify the pinned date exists in NFO instruments for this symbol.
-            available = {
-                (date.fromisoformat(str(i["expiry"])) if isinstance(i.get("expiry"), str) else i["expiry"].date() if hasattr(i.get("expiry"), "date") else i.get("expiry"))
-                for i in instruments
-                if str(i.get("name", "")).upper() == symbol.upper()
-                and i.get("instrument_type", "") in ("CE", "PE")
-                and i.get("expiry") is not None
-            }
-            if pinned_date in available:
+            if pinned_date in set(all_expiries):
                 logger.info("expiry_pinned", extra={"symbol": symbol, "expiry": str(pinned_date)})
                 return pinned_date
             logger.warning(
@@ -1912,22 +1911,7 @@ class CondorRunner:
             )
             return None
 
-        expiries: set[date] = set()
-        for inst in instruments:
-            if str(inst.get("name", "")).upper() != symbol.upper():
-                continue
-            if inst.get("instrument_type", "") not in ("CE", "PE"):
-                continue
-            raw_exp = inst.get("expiry")
-            if isinstance(raw_exp, str):
-                try:
-                    raw_exp = date.fromisoformat(raw_exp)
-                except ValueError:
-                    continue
-            elif hasattr(raw_exp, "date"):
-                raw_exp = raw_exp.date()
-            if isinstance(raw_exp, date):
-                expiries.add(raw_exp)
+        expiries: set[date] = set(all_expiries)
 
         candidates = sorted(
             exp for exp in expiries
@@ -1958,14 +1942,20 @@ class CondorRunner:
 
         Args:
             target_strike:     Ideal target strike price.
-            available_strikes: Sorted list of available strikes.
+            available_strikes: Sorted list of available strikes (must be sorted).
 
         Returns:
             Nearest available strike.
         """
         if not available_strikes:
             return target_strike
-        return min(available_strikes, key=lambda s: abs(s - target_strike))
+        pos = bisect.bisect_left(available_strikes, target_strike)
+        if pos == 0:
+            return available_strikes[0]
+        if pos == len(available_strikes):
+            return available_strikes[-1]
+        lo, hi = available_strikes[pos - 1], available_strikes[pos]
+        return lo if abs(lo - target_strike) <= abs(hi - target_strike) else hi
 
     def _get_available_strikes(
         self, symbol: str, expiry: date
@@ -1980,10 +1970,14 @@ class CondorRunner:
         Returns:
             Tuple of (sorted put strikes, sorted call strikes).
         """
+        # Use broker's pre-built strikes index — O(1) instead of O(n) instrument scan.
+        if hasattr(self._broker, "get_strikes"):
+            return self._broker.get_strikes(symbol, expiry)  # type: ignore[attr-defined]
+
+        # Fallback for non-ZerodhaBroker implementations.
         instruments = self._broker._load_instruments() if hasattr(self._broker, "_load_instruments") else []  # type: ignore[attr-defined]
         puts: set[float] = set()
         calls: set[float] = set()
-
         for inst in instruments:
             if str(inst.get("name", "")).upper() != symbol.upper():
                 continue
@@ -2006,7 +2000,6 @@ class CondorRunner:
                 puts.add(strike)
             elif itype == "CE":
                 calls.add(strike)
-
         return sorted(puts), sorted(calls)
 
     # ── Order placement helpers ────────────────────────────────────────────
