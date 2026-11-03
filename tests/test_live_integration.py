@@ -261,7 +261,8 @@ def _make_live_config() -> LiveConfig:
             max_dte=45,
             entry_start="00:00",
             entry_end="23:59",
-            min_entry_premium_pct=0.0,  # disable premium filter in integration tests
+            min_entry_premium_pct=0.0,   # disable premium filter in integration tests
+            min_shift_edge=-9999.0,      # disable min_shift_edge guard (PaperBroker has backwards pricing)
         ),
         zerodha_api_key="test",
         zerodha_api_secret="test",

@@ -151,6 +151,10 @@ class StrategyParams:
     """Number of consecutive monitoring cycles that must breach the stop-loss before exiting.
     Reduces false exits from momentary price spikes (default: 2)."""
 
+    min_shift_edge: float = 0.50
+    """Minimum net credit (INR per share) required from the new spread leg when shifting.
+    If new_short.bid - new_long.ask < min_shift_edge the shift is aborted (uneconomical)."""
+
     min_entry_premium_pct: float = 25.0
     """Minimum net credit as % of spread width required at entry. Entries with lower premium are skipped."""
 

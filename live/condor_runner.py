@@ -1302,9 +1302,9 @@ class CondorRunner:
             pos.state = "OPEN"
             return
 
-        def _mid(q: Any) -> Decimal:
-            mid = (q.bid + q.ask) / Decimal("2")
-            return (mid / Decimal("0.05")).quantize(Decimal("1")) * Decimal("0.05")
+        def _tick(price: Decimal, tick: Decimal = Decimal("0.05")) -> Decimal:
+            """Round to nearest tick boundary."""
+            return (price / tick).quantize(Decimal("1")) * tick
 
         q_ns = new_quotes.get(new_short_inst.instrument_token)
         q_nl = new_quotes.get(new_long_inst.instrument_token)
@@ -1314,8 +1314,10 @@ class CondorRunner:
             pos.state = "OPEN"
             return
 
-        new_short_price = _mid(q_ns)
-        new_long_price  = _mid(q_nl)
+        # Natural prices: SELL new short at its BID (we receive), BUY new long at its ASK (we pay).
+        # Using mid would overstate the receivable credit by ignoring half the spread cost.
+        new_short_price = _tick(q_ns.bid)
+        new_long_price  = _tick(q_nl.ask)
 
         # Zero price means the option has no market (common during F&O ban) — abort
         if new_long_price == 0:
@@ -1356,6 +1358,34 @@ class CondorRunner:
 
         new_side_credit_estimated = float(new_short_price) - float(new_long_price)
         close_debit_estimated = float(close_short_price) - float(close_long_price)
+
+        # ── Section 3b: min_shift_edge guard ─────────────────────────────
+        # new_short_price is the BID (what we receive selling the new short);
+        # new_long_price is the ASK (what we pay buying the new long).
+        # If the natural spread credit is below min_shift_edge the shift is
+        # uneconomical — abort rather than locking in a guaranteed loss.
+        min_shift_edge = getattr(self._config.strategy, "min_shift_edge", 0.50)
+        if new_side_credit_estimated < min_shift_edge:
+            logger.warning(
+                "shift_abort_insufficient_edge",
+                extra={
+                    "symbol": symbol,
+                    "new_side_credit": round(new_side_credit_estimated, 4),
+                    "min_shift_edge": min_shift_edge,
+                },
+            )
+            self._trade_logger.log(
+                EventType.SHIFT_FAILED, symbol,
+                {
+                    "trigger_side": trigger_side,
+                    "new_side_credit": round(new_side_credit_estimated, 4),
+                    "min_shift_edge": min_shift_edge,
+                    "reason": "insufficient_shift_edge",
+                },
+                level="WARNING",
+            )
+            pos.state = "OPEN"
+            return
 
         # ── Section 4: Exit gate ──────────────────────────────────────────
         running_credit = pos.initial_credit
