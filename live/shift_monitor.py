@@ -35,6 +35,11 @@ from live.trade_logger import EventType, TradeLogger
 from risk import kill_switch as _ks_module
 from risk.kill_switch import KillSwitch, KillSwitchError
 
+# QuoteService is imported lazily to avoid circular imports; type-hint only here
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from live.quote_service import QuoteService
+
 logger = logging.getLogger(__name__)
 
 _POLL_INTERVAL_SECONDS = 30
@@ -60,26 +65,32 @@ class ShiftMonitor:
         on_shift_cb: Callable[[Any, str], None],
         kill_switch: Optional[KillSwitch] = None,
         on_exit_cb: Optional[Callable[[Any, str], None]] = None,
+        quote_service: Optional["QuoteService"] = None,
     ) -> None:
         """
         Initialise the shift monitor.
 
         Args:
-            broker:       Broker adapter for live quotes.
-            positions:    Mutable list of CondorPosition objects to monitor.
-                          The CondorRunner owns this list and may append/remove
-                          positions concurrently; access is protected by _lock.
-            config:       Live trading config.
-            logger_:      TradeLogger instance for structured event logging.
-            on_shift_cb:  Callback invoked as on_shift_cb(pos, trigger_side) where
-                          trigger_side is "PUT" or "CALL".  The runner closes only
-                          the threatened spread and re-enters it at new strikes.
-            kill_switch:  KillSwitch instance. If None, a new one is created.
-            on_exit_cb:   Optional callback for non-shift exits (DTE_EXIT).
-                          Called as on_exit_cb(pos, reason) where reason is e.g.
-                          "DTE_EXIT".  If None, exit triggers are logged but not acted on.
+            broker:        Broker adapter for live quotes.
+            positions:     Mutable list of CondorPosition objects to monitor.
+                           The CondorRunner owns this list and may append/remove
+                           positions concurrently; access is protected by _lock.
+            config:        Live trading config.
+            logger_:       TradeLogger instance for structured event logging.
+            on_shift_cb:   Callback invoked as on_shift_cb(pos, trigger_side) where
+                           trigger_side is "PUT" or "CALL".  The runner closes only
+                           the threatened spread and re-enters it at new strikes.
+            kill_switch:   KillSwitch instance. If None, a new one is created.
+            on_exit_cb:    Optional callback for non-shift exits (DTE_EXIT).
+                           Called as on_exit_cb(pos, reason) where reason is e.g.
+                           "DTE_EXIT".  If None, exit triggers are logged but not acted on.
+            quote_service: Optional QuoteService.  When provided, all options-cache
+                           quote fetches go through it (with freshness guarantees and
+                           received_at tracking) instead of calling broker.get_quotes()
+                           directly.
         """
         self._broker = broker
+        self._quote_service = quote_service
         self._positions = positions
         self._config = config
         self._trade_logger = logger_
@@ -214,8 +225,26 @@ class ShiftMonitor:
                                 tsym = getattr(inst, "trading_symbol", None)
                                 if tok and tsym:
                                     instrument_pairs.append((tok, tsym))
-                    if instrument_pairs and hasattr(self._broker, "get_quotes"):
-                        raw_quotes = self._broker.get_quotes(instrument_pairs)  # type: ignore[attr-defined]
+                    if instrument_pairs:
+                        # Prefer QuoteService (freshness guarantees + received_at)
+                        # over direct broker.get_quotes().
+                        if self._quote_service is not None:
+                            from live.quote_service import QuoteServiceError
+                            try:
+                                raw_quotes = self._quote_service.get_many(
+                                    instrument_pairs, allow_outside_hours=True
+                                )
+                            except QuoteServiceError as _qse:
+                                logger.warning(
+                                    "quote_service_get_many_failed",
+                                    extra={"error": str(_qse)},
+                                )
+                                raw_quotes = {}
+                        elif hasattr(self._broker, "get_quotes"):
+                            raw_quotes = self._broker.get_quotes(instrument_pairs)  # type: ignore[attr-defined]
+                        else:
+                            raw_quotes = {}
+
                         options_cache = {}
                         for tok, tsym in instrument_pairs:
                             if tok in raw_quotes:

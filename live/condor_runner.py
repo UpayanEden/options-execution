@@ -159,6 +159,7 @@ class CondorRunner:
         capital_manager: Optional[CapitalManager] = None,
         kill_switch: Optional[KillSwitch] = None,
         config_path: Optional[Any] = None,
+        quote_service: Optional[Any] = None,
     ) -> None:
         """
         Initialise the CondorRunner.
@@ -172,8 +173,12 @@ class CondorRunner:
             config_path:     Path to live_config.yaml; if provided, config is
                              reloaded from disk at the start of each session so
                              dashboard edits take effect without a full restart.
+            quote_service:   Optional QuoteService.  When provided, all quote
+                             fetches go through it instead of broker.get_quotes()
+                             directly.
         """
         self._broker = broker
+        self._quote_service = quote_service
         self._config = config
         self._config_path = config_path
         self._trade_logger = trade_logger
@@ -283,6 +288,7 @@ class CondorRunner:
                 on_shift_cb=self.shift_condor,
                 kill_switch=self._kill_switch,
                 on_exit_cb=self._handle_exit,
+                quote_service=self._quote_service,
             )
             self._shift_monitor.start()
             self.monitor_positions(self._positions)
@@ -497,7 +503,16 @@ class CondorRunner:
         quotes_by_sym: Dict[str, Any] = {}
         for _attempt in range(_QUOTE_FRESHNESS_RETRIES + 1):
             try:
-                quotes_by_token = self._broker.get_quotes(instrument_pairs)
+                if self._quote_service is not None:
+                    from live.quote_service import QuoteServiceError
+                    try:
+                        quotes_by_token = self._quote_service.pre_trade_refresh(instrument_pairs)
+                    except QuoteServiceError as exc:
+                        logger.warning("quote_service_pretrade_failed",
+                                       extra={"symbol": symbol, "error": str(exc)})
+                        return None
+                else:
+                    quotes_by_token = self._broker.get_quotes(instrument_pairs)
             except QuoteError as exc:
                 logger.warning("quote_fetch_failed", extra={"symbol": symbol, "error": str(exc)})
                 return None
@@ -512,11 +527,19 @@ class CondorRunner:
                 logger.warning("incomplete_quotes", extra={"symbol": symbol})
                 return None
 
-            now = datetime.now(IST)
-            stale_legs = [
-                sym for sym, q in quotes_by_sym.items()
-                if (now - q.timestamp).total_seconds() > 10
-            ]
+            # Use received_at (local monotonic) for staleness; fall back to exchange
+            # timestamp only for quotes without received_at (e.g. PaperBroker).
+            now_mono = time.monotonic()
+            now_ist_dt = datetime.now(IST)
+            stale_legs = []
+            for sym, q in quotes_by_sym.items():
+                recv = getattr(q, "received_at", None)
+                if isinstance(recv, (int, float)):
+                    age = now_mono - recv
+                else:
+                    age = (now_ist_dt - q.timestamp).total_seconds()
+                if age > 10:
+                    stale_legs.append(sym)
             if not stale_legs:
                 break
             if _attempt < _QUOTE_FRESHNESS_RETRIES:
@@ -1895,11 +1918,32 @@ class CondorRunner:
             The best matching expiry date, or None.
         """
         today = datetime.now(IST).date()
-        # Use broker's pre-built expiry index — O(1) instead of O(n) instrument scan.
+        # Prefer the pre-built expiry index (O(1)) when available (ZerodhaBroker).
+        # Fall back to an O(n) scan of the raw instrument master for other brokers
+        # or for objects created via __new__ in tests.
+        all_expiries: List[date] = []
         if hasattr(self._broker, "get_expiries"):
-            all_expiries: List[date] = self._broker.get_expiries(symbol)  # type: ignore[attr-defined]
-        else:
-            all_expiries = []
+            all_expiries = self._broker.get_expiries(symbol)  # type: ignore[attr-defined]
+        if not all_expiries and hasattr(self._broker, "_load_instruments"):
+            instruments = self._broker._load_instruments()  # type: ignore[attr-defined]
+            sym_upper = symbol.upper()
+            seen: set[date] = set()
+            for inst in instruments:
+                if str(inst.get("name", "")).upper() != sym_upper:
+                    continue
+                if inst.get("instrument_type", "") not in ("CE", "PE"):
+                    continue
+                raw = inst.get("expiry")
+                try:
+                    exp = date.fromisoformat(raw) if isinstance(raw, str) else (
+                        raw.date() if hasattr(raw, "date") else raw
+                    )
+                    if isinstance(exp, date) and exp not in seen:
+                        seen.add(exp)
+                        all_expiries.append(exp)
+                except Exception:
+                    continue
+            all_expiries.sort()
 
         if pinned_date is not None:
             if pinned_date in set(all_expiries):
@@ -1972,9 +2016,12 @@ class CondorRunner:
         """
         # Use broker's pre-built strikes index — O(1) instead of O(n) instrument scan.
         if hasattr(self._broker, "get_strikes"):
-            return self._broker.get_strikes(symbol, expiry)  # type: ignore[attr-defined]
+            puts, calls = self._broker.get_strikes(symbol, expiry)  # type: ignore[attr-defined]
+            if puts or calls:
+                return puts, calls
+            # Fall through to O(n) scan when index is empty (test fixtures, cold start)
 
-        # Fallback for non-ZerodhaBroker implementations.
+        # Fallback O(n) scan for non-ZerodhaBroker or unwarmed index.
         instruments = self._broker._load_instruments() if hasattr(self._broker, "_load_instruments") else []  # type: ignore[attr-defined]
         puts: set[float] = set()
         calls: set[float] = set()

@@ -4,6 +4,7 @@ All monetary values use Decimal. All datetimes are Asia/Kolkata aware.
 """
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
@@ -212,6 +213,10 @@ class Quote(BaseModel):
     oi: int = 0
     depth_bids: list[DepthLevel] = Field(default_factory=list)
     depth_asks: list[DepthLevel] = Field(default_factory=list)
+    # Monotonic clock time (time.monotonic()) when this quote was received from
+    # the broker API.  Used for freshness checks instead of the exchange timestamp,
+    # which can be 5–15 min old for illiquid OTM options even with a live book.
+    received_at: Optional[float] = None
 
     @field_validator("ltp", "bid", "ask", mode="before")
     @classmethod
@@ -233,7 +238,15 @@ class Quote(BaseModel):
         return (self.spread / self.midpoint) * Decimal("100")
 
     def is_stale(self, staleness_seconds: int) -> bool:
-        age = (now_ist() - self.timestamp).total_seconds()
+        """
+        True if this quote is older than staleness_seconds.
+        Uses received_at (local monotonic clock) when available; falls back to
+        the exchange timestamp so old Quote objects without received_at still work.
+        """
+        if self.received_at is not None:
+            age = time.monotonic() - self.received_at
+        else:
+            age = (now_ist() - self.timestamp).total_seconds()
         return age > staleness_seconds
 
 

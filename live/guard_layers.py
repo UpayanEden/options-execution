@@ -15,6 +15,7 @@ Layers:
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
@@ -263,8 +264,13 @@ def _quote_guard(ctx: GuardContext) -> GuardResult:
         short_leg_syms = {sym for sym, side in ctx.expected_sides.items() if side == Side.SELL}
 
     for sym, quote in ctx.quotes.items():
-        # Quote age
-        age_seconds = (now - quote.timestamp).total_seconds()
+        # Quote age — use local received_at (monotonic) when available so that
+        # illiquid OTM options with old exchange timestamps are not blocked.
+        # Fall back to exchange timestamp for quotes created without received_at.
+        if quote.received_at is not None:
+            age_seconds = time.monotonic() - quote.received_at
+        else:
+            age_seconds = (now - quote.timestamp).total_seconds()
         data[f"{sym}_age_s"] = round(age_seconds, 1)
         if age_seconds > 10:
             failures.append(f"{sym}: quote age {age_seconds:.1f}s > 10s")

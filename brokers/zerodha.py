@@ -193,14 +193,22 @@ class ZerodhaBroker(BrokerAdapter):
 
     def get_expiries(self, symbol: str) -> List[date]:
         """Return sorted list of all expiry dates available for *symbol*. O(1)."""
-        if not self._instrument_index:
-            self._load_instruments()
+        if getattr(self, "_instrument_index", None) is None:
+            if getattr(self, "_instruments", None) is not None:
+                # Instruments already loaded (e.g. test fixture via __new__)
+                self._build_instrument_indexes(self._instruments)
+            else:
+                self._load_instruments()
         return self._expiry_index.get(symbol.upper(), [])
 
     def get_strikes(self, symbol: str, expiry: date) -> tuple:
         """Return (sorted_puts, sorted_calls) for *symbol* on *expiry*. O(1)."""
-        if not self._instrument_index:
-            self._load_instruments()
+        if getattr(self, "_instrument_index", None) is None:
+            if getattr(self, "_instruments", None) is not None:
+                # Instruments already loaded (e.g. test fixture via __new__)
+                self._build_instrument_indexes(self._instruments)
+            else:
+                self._load_instruments()
         return self._strikes_index.get((symbol.upper(), expiry), ([], []))
 
     # ── BrokerAdapter: resolve_instrument ─────────────────────────────────
@@ -218,8 +226,14 @@ class ZerodhaBroker(BrokerAdapter):
         Matches on: underlying name, exchange, expiry date, strike, CE/PE.
         Raises InstrumentNotFoundError if not found.
         """
-        if not self._instrument_index:
-            self._load_instruments()
+        # _instrument_index may be absent if the object was created via __new__
+        # (e.g. in tests) rather than __init__.  Build it on first access.
+        if getattr(self, "_instrument_index", None) is None:
+            if getattr(self, "_instruments", None) is not None:
+                # Instruments already loaded (e.g. test fixture via __new__)
+                self._build_instrument_indexes(self._instruments)
+            else:
+                self._load_instruments()
         opt_type_upper = option_type.upper()
         key = (underlying.upper(), expiry, opt_type_upper, strike)
         inst = self._instrument_index.get(key)
@@ -383,6 +397,10 @@ class ZerodhaBroker(BrokerAdapter):
             oi=int(data.get("oi", 0)),
             depth_bids=depth_bids,
             depth_asks=depth_asks,
+            # Local monotonic time of this REST call — used by QuoteGuard for age
+            # checks so that illiquid OTM options with old exchange timestamps are
+            # not incorrectly blocked from entry/exit.
+            received_at=time.monotonic(),
         )
 
     # ── BrokerAdapter: account data ────────────────────────────────────────
