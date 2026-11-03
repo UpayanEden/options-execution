@@ -234,6 +234,16 @@ class CondorRunner:
             self._positions.append(pos)
         already_open: set[str] = {pos.symbol for pos in self._positions}
 
+        # ── Pre-check NSE F&O ban list ─────────────────────────────────────
+        # Load/refresh at startup so we can immediately reject banned symbols
+        # before placing any entry orders. Failures are non-fatal (stale cache used).
+        try:
+            from live import ban_list as _ban_list_module
+            _ban_list_module.refresh_if_stale()
+            logger.info("ban_list_refreshed_at_startup")
+        except Exception as _bl_exc:
+            logger.warning("ban_list_startup_refresh_failed", extra={"error": str(_bl_exc)})
+
         # ── Entry phase ────────────────────────────────────────────────────
         now = datetime.now(IST)
         entry_start = self._config.strategy.entry_start
@@ -1972,6 +1982,10 @@ class CondorRunner:
             original_credit=original_credit,
             ban_hold=bool(row.get("ban_hold", 0)),
         )
+        # Restore F&O ban state so a restart doesn't reset suspended positions
+        pos.fo_ban_failures    = int(row.get("fo_ban_failures", 0) or 0)
+        pos.fo_ban_suspended   = bool(row.get("fo_ban_suspended", 0))
+        pos.fo_ban_suspended_at = float(row.get("fo_ban_suspended_at", 0.0) or 0.0)
         return pos
 
     # ── Strike/Expiry helpers ──────────────────────────────────────────────

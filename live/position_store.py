@@ -99,6 +99,12 @@ def _connect() -> sqlite3.Connection:
     if "entry_quotes" not in existing:
         # JSON snapshot of TopOfBook for each leg at the moment of entry.
         conn.execute("ALTER TABLE positions ADD COLUMN entry_quotes TEXT DEFAULT NULL")
+    if "fo_ban_failures" not in existing:
+        conn.execute("ALTER TABLE positions ADD COLUMN fo_ban_failures INTEGER NOT NULL DEFAULT 0")
+    if "fo_ban_suspended" not in existing:
+        conn.execute("ALTER TABLE positions ADD COLUMN fo_ban_suspended INTEGER NOT NULL DEFAULT 0")
+    if "fo_ban_suspended_at" not in existing:
+        conn.execute("ALTER TABLE positions ADD COLUMN fo_ban_suspended_at REAL NOT NULL DEFAULT 0.0")
     conn.commit()
     return conn
 
@@ -141,10 +147,14 @@ def _pos_to_row(pos: "CondorPosition") -> dict:  # noqa: F821
         "strikes":          strikes,
         "broker_order_ids": json.dumps(pos.broker_order_ids),
         "original_credit":  getattr(pos, "original_credit", None) or pos.initial_credit,
-        "ban_hold":         int(getattr(pos, "ban_hold", False)),
+        "ban_hold":           int(getattr(pos, "ban_hold", False)),
         # TopOfBook snapshot at entry — JSON dict keyed by leg name.
         # May be None for positions recovered from older DB rows.
-        "entry_quotes":     json.dumps(getattr(pos, "entry_quotes", None)),
+        "entry_quotes":       json.dumps(getattr(pos, "entry_quotes", None)),
+        # F&O ban failure tracking — persisted so state survives restarts.
+        "fo_ban_failures":    int(getattr(pos, "fo_ban_failures", 0)),
+        "fo_ban_suspended":   int(getattr(pos, "fo_ban_suspended", False)),
+        "fo_ban_suspended_at": float(getattr(pos, "fo_ban_suspended_at", 0.0)),
     }
 
 
