@@ -151,6 +151,10 @@ class StrategyParams:
     """Number of consecutive monitoring cycles that must breach the stop-loss before exiting.
     Reduces false exits from momentary price spikes (default: 2)."""
 
+    entry_completion_buffer_min: int = 20
+    """Minutes required to complete an entry after it starts. No new entries will be
+    initiated if now + buffer > effective_cutoff (min of entry_end and 15:15 IST)."""
+
     min_shift_edge: float = 0.50
     """Minimum net credit (INR per share) required from the new spread leg when shifting.
     If new_short.bid - new_long.ask < min_shift_edge the shift is aborted (uneconomical)."""

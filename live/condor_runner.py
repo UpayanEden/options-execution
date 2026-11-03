@@ -240,23 +240,48 @@ class CondorRunner:
         entry_end = self._config.strategy.entry_end
         now_str = self._get_now_str()
 
-        # Hard entry cutoff: no new trades after 3:15 PM regardless of config
-        if now_str >= _ENTRY_CUTOFF_TIME:
+        # Effective cutoff: earlier of config entry_end and hard 15:15 cutoff.
+        # Also block entries that would not complete before the cutoff.
+        effective_cutoff = min(entry_end, _ENTRY_CUTOFF_TIME)
+        buffer_min = int(getattr(self._config.strategy, "entry_completion_buffer_min", 20))
+        _hm = lambda s: datetime.strptime(s, "%H:%M").replace(tzinfo=IST)
+        latest_start_dt = _hm(effective_cutoff) - timedelta(minutes=buffer_min)
+        latest_start_str = latest_start_dt.strftime("%H:%M")
+
+        if now_str >= effective_cutoff:
             logger.warning(
                 "entry_blocked_hard_cutoff",
-                extra={"now": now_str, "cutoff": _ENTRY_CUTOFF_TIME},
+                extra={"now": now_str, "cutoff": effective_cutoff},
             )
             self._trade_logger.log(
                 EventType.ENTRY_BLOCKED_TIME,
                 None,
-                {"now": now_str, "cutoff": _ENTRY_CUTOFF_TIME,
-                 "reason": "Hard cutoff — no new entries after 3:15 PM IST"},
+                {"now": now_str, "cutoff": effective_cutoff,
+                 "reason": f"Hard cutoff — no new entries after {effective_cutoff} IST"},
                 level="WARNING",
             )
-        elif not (entry_start <= now_str <= entry_end):
+        elif now_str >= latest_start_str:
+            logger.warning(
+                "entry_blocked_completion_buffer",
+                extra={
+                    "now": now_str,
+                    "effective_cutoff": effective_cutoff,
+                    "buffer_min": buffer_min,
+                    "latest_start": latest_start_str,
+                },
+            )
+            self._trade_logger.log(
+                EventType.ENTRY_BLOCKED_TIME,
+                None,
+                {"now": now_str, "effective_cutoff": effective_cutoff,
+                 "buffer_min": buffer_min, "latest_start": latest_start_str,
+                 "reason": "Insufficient time to complete entry before cutoff"},
+                level="WARNING",
+            )
+        elif not (entry_start <= now_str):
             logger.warning(
                 "outside_entry_window",
-                extra={"now": now_str, "start": entry_start, "end": entry_end},
+                extra={"now": now_str, "start": entry_start, "end": effective_cutoff},
             )
         else:
             for stock_cfg in self._config.enabled_stocks:
