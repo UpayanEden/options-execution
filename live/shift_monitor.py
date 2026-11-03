@@ -514,36 +514,26 @@ class ShiftMonitor:
                 lp_bid_key  = f"{pos.long_put.trading_symbol}:bid"
                 lc_bid_key  = f"{pos.long_call.trading_symbol}:bid"
 
-                sp_ltp_key  = f"{pos.short_put.trading_symbol}:ltp"
-                sc_ltp_key  = f"{pos.short_call.trading_symbol}:ltp"
-                lp_ltp_key  = f"{pos.long_put.trading_symbol}:ltp"
-                lc_ltp_key  = f"{pos.long_call.trading_symbol}:ltp"
-
                 close_keys_present = all(
                     k in options_cache
                     for k in (sp_ask_key, sc_ask_key, lp_bid_key, lc_bid_key)
                 )
                 if close_keys_present:
-                    def _ask_val(ask_key: str, ltp_key: str) -> float:
-                        ask = options_cache.get(ask_key, 0.0)
-                        ltp = options_cache.get(ltp_key, 0.0)
-                        return ask if ask > 0 else ltp
+                    sp_ask = options_cache.get(sp_ask_key, 0.0)
+                    sc_ask = options_cache.get(sc_ask_key, 0.0)
+                    lp_bid = options_cache.get(lp_bid_key, 0.0)
+                    lc_bid = options_cache.get(lc_bid_key, 0.0)
 
-                    def _bid_val(bid_key: str, ltp_key: str) -> float:
-                        bid = options_cache.get(bid_key, 0.0)
-                        ltp = options_cache.get(ltp_key, 0.0)
-                        return bid if bid > 0 else ltp
-
-                    sp_ask = _ask_val(sp_ask_key, sp_ltp_key)
-                    sc_ask = _ask_val(sc_ask_key, sc_ltp_key)
-                    lp_bid = _bid_val(lp_bid_key, lp_ltp_key)
-                    lc_bid = _bid_val(lc_bid_key, lc_ltp_key)
-
-                    close_debit = (sp_ask + sc_ask) - (lp_bid + lc_bid)
+                    # Skip if either short has no live ask — empty book means no
+                    # reliable close price; never fall back to stale LTP.
+                    if sp_ask <= 0 or sc_ask <= 0:
+                        pass  # no valid ask for shorts — defer to next cycle
+                    else:
+                        close_debit = (sp_ask + sc_ask) - (lp_bid + lc_bid)
 
                     # Guard: close_debit < 0 means stale/invalid data (longs bid
                     # exceeds shorts ask) — skip the check rather than false-exit.
-                    if close_debit >= 0:
+                    if sp_ask > 0 and sc_ask > 0 and close_debit >= 0:
                         original_credit = float(getattr(pos, "original_credit", 0.0) or 0.0)
                         profit_captured = original_credit - close_debit
                         profit_target_pct = getattr(self._config.strategy, "profit_target_pct", 85.0)
@@ -580,33 +570,23 @@ class ShiftMonitor:
                 sc_ask_key = f"{pos.short_call.trading_symbol}:ask"
                 lp_bid_key = f"{pos.long_put.trading_symbol}:bid"
                 lc_bid_key = f"{pos.long_call.trading_symbol}:bid"
-                sp_ltp_key = f"{pos.short_put.trading_symbol}:ltp"
-                sc_ltp_key = f"{pos.short_call.trading_symbol}:ltp"
-                lp_ltp_key = f"{pos.long_put.trading_symbol}:ltp"
-                lc_ltp_key = f"{pos.long_call.trading_symbol}:ltp"
-
                 sl_keys_ok = all(
                     k in options_cache
                     for k in (sp_ask_key, sc_ask_key, lp_bid_key, lc_bid_key)
                 )
                 if sl_keys_ok:
-                    def _sl_ask(ask_k: str, ltp_k: str) -> float:
-                        v = options_cache.get(ask_k, 0.0)
-                        return v if v > 0 else options_cache.get(ltp_k, 0.0)
+                    sl_sp_ask = options_cache.get(sp_ask_key, 0.0)
+                    sl_sc_ask = options_cache.get(sc_ask_key, 0.0)
+                    sl_lp_bid = options_cache.get(lp_bid_key, 0.0)
+                    sl_lc_bid = options_cache.get(lc_bid_key, 0.0)
 
-                    def _sl_bid(bid_k: str, ltp_k: str) -> float:
-                        v = options_cache.get(bid_k, 0.0)
-                        return v if v > 0 else options_cache.get(ltp_k, 0.0)
-
-                    sl_sp_ask = _sl_ask(sp_ask_key, sp_ltp_key)
-                    sl_sc_ask = _sl_ask(sc_ask_key, sc_ltp_key)
-                    sl_lp_bid = _sl_bid(lp_bid_key, lp_ltp_key)
-                    sl_lc_bid = _sl_bid(lc_bid_key, lc_ltp_key)
-
-                    sl_close_debit = (sl_sp_ask + sl_sc_ask) - (sl_lp_bid + sl_lc_bid)
+                    # Skip if either short has no live ask — never fall back to
+                    # stale LTP for stop-loss decisions.
+                    if sl_sp_ask > 0 and sl_sc_ask > 0:
+                        sl_close_debit = (sl_sp_ask + sl_sc_ask) - (sl_lp_bid + sl_lc_bid)
 
                     # Skip check if data looks stale/invalid (close_debit < 0)
-                    if sl_close_debit >= 0:
+                    if sl_sp_ask > 0 and sl_sc_ask > 0 and sl_close_debit >= 0:
                         original_credit = float(getattr(pos, "original_credit", 0.0) or 0.0)
                         per_unit_loss   = sl_close_debit - original_credit  # positive = losing
 
@@ -826,11 +806,10 @@ class ShiftMonitor:
                 extra={"symbol": underlying, "error": str(exc)},
             )
 
-        # Last resort: use stale entry price so monitoring doesn't halt
-        fallback = float(getattr(pos, "spot_at_entry", 0) or 0)
-        if fallback > 0:
-            logger.warning(
-                "shift_monitor_using_stale_spot",
-                extra={"symbol": underlying, "spot_at_entry": fallback},
-            )
-        return fallback or None
+        # No fallback to stale entry spot — return None so callers skip the
+        # shift check rather than acting on an hours-old price.
+        logger.warning(
+            "shift_monitor_spot_unavailable",
+            extra={"symbol": underlying},
+        )
+        return None

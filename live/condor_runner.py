@@ -1050,9 +1050,15 @@ class CondorRunner:
         # Sell hedges (receive premium back), with fill confirmation
         for inst in [pos.long_put, pos.long_call]:
             q = quotes_by_token.get(inst.instrument_token)
-            # Use max(bid, ltp) to avoid LPP rejections when bid < 80% of LTP;
-            # floor at tick_size so we never place a ₹0 limit order.
-            raw_price = max(q.bid, q.ltp) if q else Decimal("0")
+            # Zerodha LPP rule: sell limit cannot be below 80% of LTP.
+            # Use the live bid when available; otherwise use 81% of LTP as the
+            # minimum floor (satisfies LPP without placing the full LTP price).
+            if q and q.bid > Decimal("0"):
+                raw_price = q.bid
+            elif q and q.ltp > Decimal("0"):
+                raw_price = (q.ltp * Decimal("0.81")).quantize(inst.tick_size)
+            else:
+                raw_price = Decimal("0")
             price = max(raw_price, inst.tick_size)
             order = Order(
                 strategy_run_id=strategy_run_id,

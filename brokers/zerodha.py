@@ -393,19 +393,21 @@ class ZerodhaBroker(BrokerAdapter):
             for d in depth_data.get("sell", [])
         ]
 
-        # Best bid/ask from depth, fallback to ohlc if depth is empty
+        # Best bid/ask from depth only — no LTP fallback.
+        # An empty book is reported as 0 so callers can detect it and skip
+        # rather than trading on a potentially stale last-trade price.
         if depth_bids:
             best_bid = depth_bids[0].price
             best_bid_qty = depth_bids[0].quantity
         else:
-            best_bid = Decimal(str(data.get("last_price", 0)))
+            best_bid = Decimal("0")
             best_bid_qty = 0
 
         if depth_asks:
             best_ask = depth_asks[0].price
             best_ask_qty = depth_asks[0].quantity
         else:
-            best_ask = Decimal(str(data.get("last_price", 0)))
+            best_ask = Decimal("0")
             best_ask_qty = 0
 
         return Quote(

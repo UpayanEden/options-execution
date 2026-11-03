@@ -183,6 +183,14 @@ class PaperBroker(BrokerAdapter):
         except ValueError:
             return self._spot
 
+    def get_equity_spot(self, symbol: str) -> Optional[float]:
+        """Return the simulated spot price for any equity symbol."""
+        return self._spot
+
+    def get_index_spot(self, underlying: str) -> Optional[float]:
+        """Return the simulated spot price for any index."""
+        return self._spot
+
     def get_positions(self) -> List[Dict[str, Any]]:
         """Return simulated open positions."""
         return list(self._positions)

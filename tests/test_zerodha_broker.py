@@ -165,7 +165,8 @@ class TestQuoteParsing:
         assert len(q.depth_bids) == 2
         assert len(q.depth_asks) == 2
 
-    def test_empty_depth_falls_back_to_ltp(self) -> None:
+    def test_empty_depth_returns_zero_bid_ask(self) -> None:
+        """Empty order book → bid=0, ask=0 (no LTP fallback to avoid stale prices)."""
         broker = _make_broker()
         broker._kite.quote.return_value = {
             "NFO:TEST": {
@@ -180,8 +181,10 @@ class TestQuoteParsing:
         quotes = broker.get_quotes([(999, "TEST")])
         assert 999 in quotes
         q = quotes[999]
-        assert q.bid == Decimal("10.0")
-        assert q.ask == Decimal("10.0")
+        assert q.bid == Decimal("0")
+        assert q.ask == Decimal("0")
+        # LTP is still available via q.ltp for callers that need it explicitly
+        assert q.ltp == Decimal("10.0")
 
     def test_quote_api_error_raises_quote_error(self) -> None:
         broker = _make_broker()
