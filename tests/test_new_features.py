@@ -97,8 +97,9 @@ def _make_monitor(config=None):
 
 def test_profit_target_exit_fires_at_85_pct():
     """
-    original_credit=10.0; current short bid=0.8+0.7=1.5; long ask=0+0 → 0;
-    current_credit=1.5; profit_captured=10.0-1.5=8.5 ≥ 85% of 10.0=8.5 → fires
+    Natural close debit: BUY BACK shorts at ASK, SELL longs at BID.
+    original_credit=10.0; short ask=0.8+0.7=1.5; long bid=0+0=0;
+    close_debit=1.5; profit_captured=10.0-1.5=8.5 ≥ 85% of 10.0=8.5 → fires
     """
     monitor = _make_monitor(_make_config(profit_target_pct=85.0))
     pos = _make_pos(original_credit=10.0)
@@ -109,16 +110,16 @@ def test_profit_target_exit_fires_at_85_pct():
     lc_ts  = pos.long_call.trading_symbol
 
     options_cache = {
-        f"{sp_ts}:bid": 0.8,
-        f"{sp_ts}:ask": 0.9,
-        f"{sp_ts}:ltp": 0.85,
-        f"{sc_ts}:bid": 0.7,
-        f"{sc_ts}:ask": 0.75,
-        f"{sc_ts}:ltp": 0.72,
-        f"{lp_ts}:bid": 0.0,
+        f"{sp_ts}:bid": 0.75,
+        f"{sp_ts}:ask": 0.8,   # shorts closed at ask → contributes 0.8
+        f"{sp_ts}:ltp": 0.78,
+        f"{sc_ts}:bid": 0.65,
+        f"{sc_ts}:ask": 0.7,   # shorts closed at ask → contributes 0.7
+        f"{sc_ts}:ltp": 0.68,
+        f"{lp_ts}:bid": 0.0,   # longs closed at bid → contributes 0.0
         f"{lp_ts}:ask": 0.0,
         f"{lp_ts}:ltp": 0.0,
-        f"{lc_ts}:bid": 0.0,
+        f"{lc_ts}:bid": 0.0,   # longs closed at bid → contributes 0.0
         f"{lc_ts}:ask": 0.0,
         f"{lc_ts}:ltp": 0.0,
     }

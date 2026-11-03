@@ -503,50 +503,65 @@ class ShiftMonitor:
         # ── 3b. Profit target check ───────────────────────────────────────
         if options_cache is not None:
             try:
-                sp_bid_key  = f"{pos.short_put.trading_symbol}:bid"
-                sc_bid_key  = f"{pos.short_call.trading_symbol}:bid"
-                lp_ask_key  = f"{pos.long_put.trading_symbol}:ask"
-                lc_ask_key  = f"{pos.long_call.trading_symbol}:ask"
+                # Natural close debit: to close a short condor we must
+                # BUY BACK the shorts (pay ASK) and SELL the longs (receive BID).
+                # close_debit = (sp_ask + sc_ask) - (lp_bid + lc_bid)
+                sp_ask_key  = f"{pos.short_put.trading_symbol}:ask"
+                sc_ask_key  = f"{pos.short_call.trading_symbol}:ask"
+                lp_bid_key  = f"{pos.long_put.trading_symbol}:bid"
+                lc_bid_key  = f"{pos.long_call.trading_symbol}:bid"
 
                 sp_ltp_key  = f"{pos.short_put.trading_symbol}:ltp"
                 sc_ltp_key  = f"{pos.short_call.trading_symbol}:ltp"
                 lp_ltp_key  = f"{pos.long_put.trading_symbol}:ltp"
                 lc_ltp_key  = f"{pos.long_call.trading_symbol}:ltp"
 
-                keys_present = all(k in options_cache for k in (sp_bid_key, sc_bid_key, lp_ask_key, lc_ask_key))
-                if keys_present:
-                    def _leg_val(bid_key: str, ltp_key: str) -> float:
+                close_keys_present = all(
+                    k in options_cache
+                    for k in (sp_ask_key, sc_ask_key, lp_bid_key, lc_bid_key)
+                )
+                if close_keys_present:
+                    def _ask_val(ask_key: str, ltp_key: str) -> float:
+                        ask = options_cache.get(ask_key, 0.0)
+                        ltp = options_cache.get(ltp_key, 0.0)
+                        return ask if ask > 0 else ltp
+
+                    def _bid_val(bid_key: str, ltp_key: str) -> float:
                         bid = options_cache.get(bid_key, 0.0)
                         ltp = options_cache.get(ltp_key, 0.0)
                         return bid if bid > 0 else ltp
 
-                    short_put_bid  = _leg_val(sp_bid_key, sp_ltp_key)
-                    short_call_bid = _leg_val(sc_bid_key, sc_ltp_key)
-                    long_put_ask   = options_cache.get(lp_ask_key, 0.0) or options_cache.get(lp_ltp_key, 0.0)
-                    long_call_ask  = options_cache.get(lc_ask_key, 0.0) or options_cache.get(lc_ltp_key, 0.0)
+                    sp_ask = _ask_val(sp_ask_key, sp_ltp_key)
+                    sc_ask = _ask_val(sc_ask_key, sc_ltp_key)
+                    lp_bid = _bid_val(lp_bid_key, lp_ltp_key)
+                    lc_bid = _bid_val(lc_bid_key, lc_ltp_key)
 
-                    current_credit = (short_put_bid + short_call_bid) - (long_put_ask + long_call_ask)
-                    original_credit = float(getattr(pos, "original_credit", 0.0) or 0.0)
-                    profit_captured = original_credit - max(current_credit, 0.0)
-                    profit_target_pct = getattr(self._config.strategy, "profit_target_pct", 85.0)
-                    target = original_credit * (profit_target_pct / 100.0)
+                    close_debit = (sp_ask + sc_ask) - (lp_bid + lc_bid)
 
-                    if original_credit > 0 and profit_captured >= target:
-                        self._trade_logger.log(
-                            EventType.PROFIT_TARGET_EXIT,
-                            symbol,
-                            {
-                                "original_credit": round(original_credit, 4),
-                                "current_credit": round(current_credit, 4),
-                                "profit_captured": round(profit_captured, 4),
-                                "target": round(target, 4),
-                                "profit_target_pct": profit_target_pct,
-                            },
-                            level="WARNING",
-                        )
-                        return "PROFIT_TARGET_EXIT", (
-                            f"profit={profit_captured:.4f} >= target={target:.4f}"
-                        )
+                    # Guard: close_debit < 0 means stale/invalid data (longs bid
+                    # exceeds shorts ask) — skip the check rather than false-exit.
+                    if close_debit >= 0:
+                        original_credit = float(getattr(pos, "original_credit", 0.0) or 0.0)
+                        profit_captured = original_credit - close_debit
+                        profit_target_pct = getattr(self._config.strategy, "profit_target_pct", 85.0)
+                        target = original_credit * (profit_target_pct / 100.0)
+
+                        if original_credit > 0 and profit_captured >= target:
+                            self._trade_logger.log(
+                                EventType.PROFIT_TARGET_EXIT,
+                                symbol,
+                                {
+                                    "original_credit": round(original_credit, 4),
+                                    "close_debit": round(close_debit, 4),
+                                    "profit_captured": round(profit_captured, 4),
+                                    "target": round(target, 4),
+                                    "profit_target_pct": profit_target_pct,
+                                },
+                                level="WARNING",
+                            )
+                            return "PROFIT_TARGET_EXIT", (
+                                f"profit={profit_captured:.4f} >= target={target:.4f}"
+                            )
             except Exception as _exc:
                 logger.debug("profit_target_check_error", extra={"symbol": symbol, "error": str(_exc)})
 
