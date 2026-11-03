@@ -137,6 +137,9 @@ class CondorPosition:
     ban_hold: bool = False
     """True when symbol is on F&O ban list — shift is paused, DTE exit may still fire."""
 
+    entry_quotes: Optional[dict] = None
+    """TopOfBook snapshot for each leg at entry time, stored to DB for post-trade analysis."""
+
 
 # ── CondorRunner ───────────────────────────────────────────────────────────
 
@@ -551,16 +554,26 @@ class CondorRunner:
             # On the final attempt, fall through with whatever freshness we have;
             # QuoteGuard will record the exact ages in the structured guard report.
 
-        # ── Build limit prices (top of book, per-instrument tick) ──────────
-        # SELL legs: use best bid (top of buy stack) — what buyers will pay
-        # BUY  legs: use best ask (top of sell stack) — what sellers are asking
-        def _round_to_tick(p: Decimal, tick: Decimal) -> Decimal:
-            return (p / tick).quantize(Decimal("1")) * tick
+        # ── Build TopOfBook snapshots (pricing + later validation) ───────────
+        from execution.models import TopOfBook
+        leg_info = [
+            (short_put_inst,  Side.SELL, "short_put"),
+            (long_put_inst,   Side.BUY,  "long_put"),
+            (short_call_inst, Side.SELL, "short_call"),
+            (long_call_inst,  Side.BUY,  "long_call"),
+        ]
+        top_of_book: Dict[str, TopOfBook] = {}
+        for inst, _side, _label in leg_info:
+            q = quotes_by_sym[inst.trading_symbol]
+            top_of_book[inst.trading_symbol] = TopOfBook.from_quote(q)
 
-        short_put_price  = _round_to_tick(quotes_by_sym[short_put_inst.trading_symbol].bid, short_put_inst.tick_size)
-        long_put_price   = _round_to_tick(quotes_by_sym[long_put_inst.trading_symbol].ask, long_put_inst.tick_size)
-        short_call_price = _round_to_tick(quotes_by_sym[short_call_inst.trading_symbol].bid, short_call_inst.tick_size)
-        long_call_price  = _round_to_tick(quotes_by_sym[long_call_inst.trading_symbol].ask, long_call_inst.tick_size)
+        # ── Build limit prices using TopOfBook spread-aware pricing ────────
+        # SELL legs: bid (or bid+1 tick if spread is wide) — what buyers pay
+        # BUY  legs: ask (or ask-1 tick if spread is wide) — what we pay
+        short_put_price  = top_of_book[short_put_inst.trading_symbol].limit_price(Side.SELL, short_put_inst.tick_size)
+        long_put_price   = top_of_book[long_put_inst.trading_symbol].limit_price(Side.BUY,  long_put_inst.tick_size)
+        short_call_price = top_of_book[short_call_inst.trading_symbol].limit_price(Side.SELL, short_call_inst.tick_size)
+        long_call_price  = top_of_book[long_call_inst.trading_symbol].limit_price(Side.BUY,  long_call_inst.tick_size)
 
         # ── Premium-to-width filter ────────────────────────────────────────
         spread_width = float(short_put_strike - long_put_strike)  # same as call side
@@ -583,6 +596,26 @@ class CondorRunner:
                 extra={"symbol": symbol,
                        "premium_pct": round(net_credit_check / spread_width * 100, 2),
                        "min_required_pct": self._config.strategy.min_entry_premium_pct},
+            )
+            return None
+
+        # ── TopOfBook validation: one-sided, crossed, wide spread, stale ──
+        # Runs AFTER the premium filter so credit-too-low exits cheaply.
+        tob_failures: List[str] = []
+        for inst, _side, _label in leg_info:
+            tob = top_of_book[inst.trading_symbol]
+            errs = tob.validate(max_spread_pct=0.15, min_qty=1, max_age_s=10.0)
+            tob_failures.extend(errs)
+
+        if tob_failures:
+            self._trade_logger.log(
+                EventType.ENTRY_FAILED, symbol,
+                {"reason": "top_of_book_validation_failed", "failures": tob_failures},
+                level="WARNING",
+            )
+            logger.warning(
+                "entry_blocked_tob_validation",
+                extra={"symbol": symbol, "failures": tob_failures},
             )
             return None
 
@@ -828,6 +861,15 @@ class CondorRunner:
         )
         # Set original_credit at entry — never mutated (exit gate uses this)
         pos.original_credit = pos.initial_credit
+
+        # Snapshot TopOfBook data for post-trade analysis and diagnostics
+        if top_of_book:
+            pos.entry_quotes = {
+                "short_put":  top_of_book.get(short_put_inst.trading_symbol,  None) and top_of_book[short_put_inst.trading_symbol].to_snapshot(),
+                "long_put":   top_of_book.get(long_put_inst.trading_symbol,   None) and top_of_book[long_put_inst.trading_symbol].to_snapshot(),
+                "short_call": top_of_book.get(short_call_inst.trading_symbol, None) and top_of_book[short_call_inst.trading_symbol].to_snapshot(),
+                "long_call":  top_of_book.get(long_call_inst.trading_symbol,  None) and top_of_book[long_call_inst.trading_symbol].to_snapshot(),
+            }
 
         self._position_store.upsert(pos)
 

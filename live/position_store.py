@@ -96,6 +96,9 @@ def _connect() -> sqlite3.Connection:
         conn.execute("UPDATE positions SET original_credit = initial_credit WHERE original_credit IS NULL")
     if "ban_hold" not in existing:
         conn.execute("ALTER TABLE positions ADD COLUMN ban_hold INTEGER NOT NULL DEFAULT 0")
+    if "entry_quotes" not in existing:
+        # JSON snapshot of TopOfBook for each leg at the moment of entry.
+        conn.execute("ALTER TABLE positions ADD COLUMN entry_quotes TEXT DEFAULT NULL")
     conn.commit()
     return conn
 
@@ -139,6 +142,9 @@ def _pos_to_row(pos: "CondorPosition") -> dict:  # noqa: F821
         "broker_order_ids": json.dumps(pos.broker_order_ids),
         "original_credit":  getattr(pos, "original_credit", None) or pos.initial_credit,
         "ban_hold":         int(getattr(pos, "ban_hold", False)),
+        # TopOfBook snapshot at entry — JSON dict keyed by leg name.
+        # May be None for positions recovered from older DB rows.
+        "entry_quotes":     json.dumps(getattr(pos, "entry_quotes", None)),
     }
 
 
