@@ -49,8 +49,24 @@ strategy:
   # ── F&O ban behaviour (Section 7) ───────────────────────────────────────
   allow_dte_exit_during_ban: true  # Allow DTE-triggered exit even if symbol is on ban list
 
-  profit_target_pct: 85.0      # exit when 85% of net premium captured
+  profit_target_pct: 85.0        # exit when 85% of net premium captured
   min_entry_premium_pct: 25.0    # minimum premium/width ratio at entry (%)
+
+  # ── Stop-loss controls ───────────────────────────────────────────────────
+  stop_loss_credit_multiple:     # exit when loss >= N× entry credit (e.g. 2.0); null = disabled
+  stop_loss_inr:                 # exit when loss >= this INR amount; null = disabled
+  stop_loss_confirm_checks: 2   # consecutive breach cycles before stop-loss fires
+
+  # ── Daily loss circuit breaker ───────────────────────────────────────────
+  max_daily_loss_inr:            # kill switch when session loss >= this INR; null = disabled
+
+  # ── Entry controls ───────────────────────────────────────────────────────
+  entry_completion_buffer_min: 20  # don't start new entries within N min of cutoff
+  min_shift_edge: 0.50             # minimum net credit (₹/share) for a shift to be viable
+
+  # ── Re-entry and F&O ban ─────────────────────────────────────────────────
+  allow_reentry: false             # allow re-entering same symbol+expiry after an exit
+  max_fo_ban_suspension_cycles: 2  # exit position after N completed 1-hr ban suspensions
 
 # ── Telegram alert notifications (Section 8) ────────────────────────────────
 # Leave blank to disable Telegram alerts. Never commit real tokens.

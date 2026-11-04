@@ -216,6 +216,16 @@ class LiveConfig:
 # ── Loader ─────────────────────────────────────────────────────────────────
 
 
+def _opt_float(value) -> Optional[float]:
+    """Return float(value) or None if value is None/empty."""
+    if value is None or value == "" or value == "null":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def load_config(config_path: Optional[Path] = None) -> LiveConfig:
     """
     Load LiveConfig from a YAML file, then override Zerodha credentials from
@@ -308,7 +318,15 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
         spot_missing_alert_cycles=int(strat_raw.get("spot_missing_alert_cycles", 4)),
         allow_dte_exit_during_ban=bool(strat_raw.get("allow_dte_exit_during_ban", True)),
         profit_target_pct=float(strat_raw.get("profit_target_pct", 85.0)),
+        stop_loss_credit_multiple=_opt_float(strat_raw.get("stop_loss_credit_multiple")),
+        stop_loss_inr=_opt_float(strat_raw.get("stop_loss_inr")),
+        stop_loss_confirm_checks=int(strat_raw.get("stop_loss_confirm_checks", 2)),
+        max_daily_loss_inr=_opt_float(strat_raw.get("max_daily_loss_inr")),
+        entry_completion_buffer_min=int(strat_raw.get("entry_completion_buffer_min", 20)),
+        min_shift_edge=float(strat_raw.get("min_shift_edge", 0.50)),
         min_entry_premium_pct=float(strat_raw.get("min_entry_premium_pct", 25.0)),
+        allow_reentry=bool(strat_raw.get("allow_reentry", False)),
+        max_fo_ban_suspension_cycles=int(strat_raw.get("max_fo_ban_suspension_cycles", 2)),
     )
 
     # ── Zerodha credentials (yaml first, env overrides) ────────────────────
