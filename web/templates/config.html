@@ -132,17 +132,22 @@ function parseAndRender() {
     const stratSection = yaml.match(/strategy:([\s\S]*?)(?=\nzerodha:|$)/)?.[1] || '';
     const stratLines = {};
     for (const line of stratSection.split('\n')) {
-        const m = line.match(/^\s+(\w+):\s*(.+)/);
-        if (m) stratLines[m[1].trim()] = m[2].trim();
+        // Match "  key: value  # optional comment" OR "  key:  # comment only" OR "  key:"
+        const m = line.match(/^\s+(\w+):\s*(.*)/);
+        if (!m) continue;
+        // Strip inline comment and trim
+        let val = m[2].replace(/\s+#.*$/, '').trim();
+        stratLines[m[1].trim()] = val || '—';
     }
     const stratEl = document.getElementById('strategy-summary');
     if (Object.keys(stratLines).length) {
-        stratEl.innerHTML = Object.entries(stratLines).map(([k, v]) =>
-            `<div class="d-flex justify-content-between border-bottom pb-1 mb-1" style="border-color:#2a2d3e!important">
+        stratEl.innerHTML = Object.entries(stratLines).map(([k, v]) => {
+            const isNull = v === '—';
+            return `<div class="d-flex justify-content-between border-bottom pb-1 mb-1" style="border-color:#2a2d3e!important">
                 <span class="text-muted">${k.replace(/_/g,' ')}</span>
-                <span class="fw-semibold">${v}</span>
-             </div>`
-        ).join('');
+                <span class="fw-semibold ${isNull ? 'text-secondary' : ''}">${v}</span>
+             </div>`;
+        }).join('');
     } else {
         stratEl.innerHTML = '<span class="text-warning">Could not parse strategy section.</span>';
     }
