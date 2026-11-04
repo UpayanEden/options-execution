@@ -166,6 +166,15 @@ class StrategyParams:
     min_entry_premium_pct: float = 25.0
     """Minimum net credit as % of spread width required at entry. Entries with lower premium are skipped."""
 
+    allow_reentry: bool = False
+    """Allow re-entering the same symbol+expiry after an exit within the same session.
+    When False (default) the first exit on a given expiry blocks all further entries for it."""
+
+    max_fo_ban_suspension_cycles: int = 2
+    """Exit the position after this many completed 1-hour F&O ban suspensions.
+    After N suspensions the stock is clearly stuck in ban and further waiting only
+    deepens the loss — exit instead of waiting indefinitely."""
+
 
 @dataclass
 class LiveConfig:

@@ -314,7 +314,40 @@ class ShiftMonitor:
                     extra={"symbol": symbol, "retry_in_mins": round((3600 - elapsed) / 60, 1)},
                 )
                 return
-            # 1 hour has passed — clear suspension and let normal flow try again
+            # 1 hour has passed — count the cycle, check if we've hit the limit
+            pos.fo_ban_suspension_count = getattr(pos, "fo_ban_suspension_count", 0) + 1
+            max_cycles = int(getattr(self._config.strategy, "max_fo_ban_suspension_cycles", 2))
+            logger.info(
+                "fo_ban_suspension_cycle_completed",
+                extra={
+                    "symbol": symbol,
+                    "cycles": pos.fo_ban_suspension_count,
+                    "max_cycles": max_cycles,
+                },
+            )
+            if pos.fo_ban_suspension_count >= max_cycles:
+                logger.warning(
+                    "fo_ban_max_cycles_exit_triggered",
+                    extra={
+                        "symbol": symbol,
+                        "cycles": pos.fo_ban_suspension_count,
+                        "max_cycles": max_cycles,
+                    },
+                )
+                self._trade_logger.log(
+                    EventType.EXIT_ATTEMPT,
+                    symbol,
+                    {
+                        "reason": "FO_BAN_MAX_CYCLES_EXIT",
+                        "cycles": pos.fo_ban_suspension_count,
+                        "max_cycles": max_cycles,
+                    },
+                    level="WARNING",
+                )
+                if self._on_exit_cb is not None:
+                    self._on_exit_cb(pos, "FO_BAN_MAX_CYCLES_EXIT")
+                return
+            # Under the limit — clear suspension and retry
             pos.fo_ban_suspended = False
             pos.fo_ban_failures = 0
             pos.fo_ban_suspended_at = 0.0

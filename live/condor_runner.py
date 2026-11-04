@@ -128,6 +128,10 @@ class CondorPosition:
     fo_ban_suspended_at: float = 0.0
     """Unix timestamp when F&O ban suspension was last set."""
 
+    fo_ban_suspension_count: int = 0
+    """Total number of completed 1-hour F&O ban suspensions for this position.
+    When this reaches max_fo_ban_suspension_cycles the position is exited."""
+
     original_credit: float = 0.0
     """Net premium credit at entry — immutable; used by exit gate."""
 
@@ -488,7 +492,8 @@ class CondorRunner:
             return None
 
         # ── No re-entry after exit for this expiry ────────────────────────
-        if self._position_store.is_expiry_exited(symbol, str(expiry)):
+        allow_reentry = getattr(self._config.strategy, "allow_reentry", False)
+        if not allow_reentry and self._position_store.is_expiry_exited(symbol, str(expiry)):
             logger.info(
                 "entry_blocked_expiry_already_exited",
                 extra={"symbol": symbol, "expiry": str(expiry)},
@@ -1545,11 +1550,17 @@ class CondorRunner:
             self.exit_condor(pos, "EXIT_INSTEAD_OF_SHIFT_ZERO_CREDIT")
             return
 
+        # When already in loss, skip exit gates — exiting locks in the loss;
+        # shifting still gives the position a chance to recover.
+        currently_in_loss = exit_pnl_now < 0
+
         # Condition 1: after min_shifts, if projected_credit <= exit_gate_pct * original_credit
         # AND exit right now is better than worst case of the shift
+        # Skip when in loss — the gate was designed for near-breakeven positions only.
         min_shifts = self._config.strategy.min_shifts_before_exit_gate
         exit_gate_pct = self._config.strategy.exit_gate_pct
-        if (pos.shift_count >= min_shifts
+        if (not currently_in_loss
+                and pos.shift_count >= min_shifts
                 and projected_credit <= exit_gate_pct * original_credit
                 and exit_pnl_now >= shift_worst_pnl):
             logger.warning("shift_exit_gate_triggered", extra={
@@ -1579,7 +1590,8 @@ class CondorRunner:
             return
 
         # ── Step 1b: Old premium gate (kept for backward compat with legacy credit check) ──
-        if pos.initial_credit > 0:
+        # Skip when in loss — same rationale as Condition 1 above.
+        if not currently_in_loss and pos.initial_credit > 0:
             post_shift_credit = pos.initial_credit + (new_side_credit_estimated - close_debit_estimated)
             min_viable_credit = pos.initial_credit * 0.05
             if post_shift_credit < min_viable_credit:
@@ -2050,9 +2062,10 @@ class CondorRunner:
             ban_hold=bool(row.get("ban_hold", 0)),
         )
         # Restore F&O ban state so a restart doesn't reset suspended positions
-        pos.fo_ban_failures    = int(row.get("fo_ban_failures", 0) or 0)
-        pos.fo_ban_suspended   = bool(row.get("fo_ban_suspended", 0))
-        pos.fo_ban_suspended_at = float(row.get("fo_ban_suspended_at", 0.0) or 0.0)
+        pos.fo_ban_failures         = int(row.get("fo_ban_failures", 0) or 0)
+        pos.fo_ban_suspended        = bool(row.get("fo_ban_suspended", 0))
+        pos.fo_ban_suspended_at     = float(row.get("fo_ban_suspended_at", 0.0) or 0.0)
+        pos.fo_ban_suspension_count = int(row.get("fo_ban_suspension_count", 0) or 0)
         return pos
 
     # ── Strike/Expiry helpers ──────────────────────────────────────────────

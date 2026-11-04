@@ -105,6 +105,8 @@ def _connect() -> sqlite3.Connection:
         conn.execute("ALTER TABLE positions ADD COLUMN fo_ban_suspended INTEGER NOT NULL DEFAULT 0")
     if "fo_ban_suspended_at" not in existing:
         conn.execute("ALTER TABLE positions ADD COLUMN fo_ban_suspended_at REAL NOT NULL DEFAULT 0.0")
+    if "fo_ban_suspension_count" not in existing:
+        conn.execute("ALTER TABLE positions ADD COLUMN fo_ban_suspension_count INTEGER NOT NULL DEFAULT 0")
     conn.commit()
     return conn
 
@@ -152,9 +154,10 @@ def _pos_to_row(pos: "CondorPosition") -> dict:  # noqa: F821
         # May be None for positions recovered from older DB rows.
         "entry_quotes":       json.dumps(getattr(pos, "entry_quotes", None)),
         # F&O ban failure tracking — persisted so state survives restarts.
-        "fo_ban_failures":    int(getattr(pos, "fo_ban_failures", 0)),
-        "fo_ban_suspended":   int(getattr(pos, "fo_ban_suspended", False)),
-        "fo_ban_suspended_at": float(getattr(pos, "fo_ban_suspended_at", 0.0)),
+        "fo_ban_failures":         int(getattr(pos, "fo_ban_failures", 0)),
+        "fo_ban_suspended":        int(getattr(pos, "fo_ban_suspended", False)),
+        "fo_ban_suspended_at":     float(getattr(pos, "fo_ban_suspended_at", 0.0)),
+        "fo_ban_suspension_count": int(getattr(pos, "fo_ban_suspension_count", 0)),
     }
 
 
