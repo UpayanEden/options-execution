@@ -409,7 +409,8 @@ def create_app() -> Flask:
         total_pnl = 0.0
         for pos in open_pos:
             sym = pos["symbol"]
-            entry_credit = float(pos.get("initial_credit", 0) or 0)
+            initial_credit_lp2 = float(pos.get("initial_credit", 0) or 0)
+            entry_credit = float(pos.get("original_credit") or initial_credit_lp2)
             lots = int(pos.get("lots", 1) or 1)
             lot_size = int(pos.get("lot_size", 1) or 1)
             qty = lots * lot_size
@@ -496,7 +497,10 @@ def create_app() -> Flask:
         results = []
         for pos in open_pos:
             sym = pos["symbol"]
-            entry_credit = float(pos.get("initial_credit", 0) or 0)
+            initial_credit_lp = float(pos.get("initial_credit", 0) or 0)
+            # Use original_credit (entry basis) for P&L and margin calculations.
+            # Falls back to initial_credit for rows that pre-date the column.
+            entry_credit = float(pos.get("original_credit") or initial_credit_lp)
             lots = int(pos.get("lots", 1) or 1)
             lot_size = int(pos.get("lot_size", 1) or 1)
             qty = lots * lot_size
@@ -1342,6 +1346,9 @@ def _compute_position_metrics(
         lot_size = int(pos.get("lot_size", 1) or 1)
         qty = lots * lot_size
         initial_credit = float(pos.get("initial_credit", 0) or 0)
+        # original_credit = credit collected at entry, never mutated by shifts.
+        # Falls back to initial_credit for older DB rows that pre-date the column.
+        original_credit = float(pos.get("original_credit") or initial_credit)
 
         sp = float(strikes.get("short_put") or 0)
         lp = float(strikes.get("long_put") or 0)
@@ -1355,21 +1362,25 @@ def _compute_position_metrics(
         stock_cfg = stocks_map.get(sym, {})
         premium_pct_target = float(stock_cfg.get("premium_pct", 0.4))
 
-        net_premium_total = round(initial_credit * qty, 2)
+        # net_premium_total is based on original_credit (entry premium, never mutated).
+        # The dashboard total adds shift_pnl on top to arrive at running credit.
+        net_premium_total = round(original_credit * qty, 2)
+        # running_credit_total reflects initial_credit which is updated after each shift.
+        running_credit_total = round(initial_credit * qty, 2)
         max_profit = net_premium_total
-        max_loss_ps = max(spread_width - initial_credit, 0.0)
+        max_loss_ps = max(spread_width - original_credit, 0.0)
         max_loss = round(max_loss_ps * qty, 2)
         cash_margin = max_loss
 
         net_premium_pct = (
-            round(initial_credit / spread_width * 100, 2) if spread_width > 0 else None
+            round(original_credit / spread_width * 100, 2) if spread_width > 0 else None
         )
         # R/R: how many ₹ at risk for every ₹ of max profit
         rr_strategy = (
-            round(max_loss_ps / initial_credit, 2) if initial_credit > 0 else None
+            round(max_loss_ps / original_credit, 2) if original_credit > 0 else None
         )
         profit_if_wait = round(
-            initial_credit * (1.0 - premium_pct_target) * qty, 2
+            original_credit * (1.0 - premium_pct_target) * qty, 2
         )
         rr_wait = (
             round(max_loss / profit_if_wait, 2) if profit_if_wait > 0 else None
@@ -1380,6 +1391,7 @@ def _compute_position_metrics(
             "call_width": call_width,
             "spread_width": spread_width,
             "net_premium_total": net_premium_total,
+            "running_credit_total": running_credit_total,
             "max_profit": max_profit,
             "max_loss": max_loss,
             "cash_margin": cash_margin,
