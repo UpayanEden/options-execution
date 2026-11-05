@@ -101,11 +101,9 @@ class ShiftMonitor:
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
-        # Per-symbol consecutive spot-miss counters (Section 6)
+        # Per-symbol consecutive spot-miss counters
         self._spot_miss_count: Dict[str, int] = {}
-        # Track which symbols had FNO_BAN_HOLD logged today (Section 7)
-        self._ban_hold_logged: set = set()
-        # Periodic reconciliation cycle counter (Section 5)
+        # Periodic reconciliation cycle counter
         self._recon_cycle: int = 0
         logger.info("shift_monitor_created")
 
@@ -302,55 +300,6 @@ class ShiftMonitor:
             logger.warning("shift_monitor_skip_needs_recon", extra={"symbol": symbol})
             return
 
-        # ── F&O ban suspension check ───────────────────────────────────────
-        if getattr(pos, "fo_ban_suspended", False):
-            suspended_at = getattr(pos, "fo_ban_suspended_at", 0.0)
-            elapsed = time.time() - suspended_at
-            if elapsed < 3600:  # wait 1 hour before retrying
-                logger.debug(
-                    "shift_skipped_fo_ban_suspended",
-                    extra={"symbol": symbol, "retry_in_mins": round((3600 - elapsed) / 60, 1)},
-                )
-                return
-            # 1 hour has passed — count the cycle, check if we've hit the limit
-            pos.fo_ban_suspension_count = getattr(pos, "fo_ban_suspension_count", 0) + 1
-            max_cycles = int(getattr(self._config.strategy, "max_fo_ban_suspension_cycles", 2))
-            logger.info(
-                "fo_ban_suspension_cycle_completed",
-                extra={
-                    "symbol": symbol,
-                    "cycles": pos.fo_ban_suspension_count,
-                    "max_cycles": max_cycles,
-                },
-            )
-            if pos.fo_ban_suspension_count >= max_cycles:
-                logger.warning(
-                    "fo_ban_max_cycles_exit_triggered",
-                    extra={
-                        "symbol": symbol,
-                        "cycles": pos.fo_ban_suspension_count,
-                        "max_cycles": max_cycles,
-                    },
-                )
-                self._trade_logger.log(
-                    EventType.EXIT_ATTEMPT,
-                    symbol,
-                    {
-                        "reason": "FO_BAN_MAX_CYCLES_EXIT",
-                        "cycles": pos.fo_ban_suspension_count,
-                        "max_cycles": max_cycles,
-                    },
-                    level="WARNING",
-                )
-                if self._on_exit_cb is not None:
-                    self._on_exit_cb(pos, "FO_BAN_MAX_CYCLES_EXIT")
-                return
-            # Under the limit — clear suspension and retry
-            pos.fo_ban_suspended = False
-            pos.fo_ban_failures = 0
-            pos.fo_ban_suspended_at = 0.0
-            logger.info("fo_ban_suspension_cleared_retrying", extra={"symbol": symbol})
-
         try:
             action, reason = self._check_position(
                 pos, spot_cache=spot_cache, all_spots_null=all_spots_null,
@@ -361,7 +310,7 @@ class ShiftMonitor:
                 logger.debug("position_ok", extra={"symbol": symbol})
                 return
 
-            if action in ("DATA_UNAVAILABLE", "BAN_HOLD", "NEEDS_RECON"):
+            if action in ("DATA_UNAVAILABLE", "NEEDS_RECON"):
                 # Nothing to do — logged inside _check_position
                 return
 
@@ -428,30 +377,7 @@ class ShiftMonitor:
         if getattr(pos, "state", "") == "NEEDS_RECON":
             return "NEEDS_RECON", ""
 
-        # ── 1. F&O ban list check ──────────────────────────────────────────
-        try:
-            from live import ban_list
-            banned = ban_list.is_banned(symbol)
-        except Exception:
-            banned = False
-
-        if banned:
-            if symbol not in self._ban_hold_logged:
-                self._ban_hold_logged.add(symbol)
-                pos.ban_hold = True
-                self._trade_logger.log(
-                    EventType.FNO_BAN_HOLD, symbol,
-                    {"reason": "symbol_on_fno_ban_list"},
-                    level="WARNING",
-                )
-            return "BAN_HOLD", ""
-        else:
-            if getattr(pos, "ban_hold", False):
-                pos.ban_hold = False
-                self._ban_hold_logged.discard(symbol)
-                self._trade_logger.log(EventType.FNO_BAN_LIFTED, symbol, {})
-
-        # ── 2. Fetch live spot price (use cache if available) ──────────────
+        # ── 1. Fetch live spot price (use cache if available) ──────────────
         spot: Optional[float] = None
         if spot_cache is not None:
             underlying = getattr(pos, "underlying", "")

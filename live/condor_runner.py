@@ -1436,23 +1436,11 @@ class CondorRunner:
         new_short_price = _tick(q_ns.bid)
         new_long_price  = _tick(q_nl.ask)
 
-        # Zero price means the option has no market (common during F&O ban) — abort
+        # Zero price means the option has no market — abort and retry next cycle
         if new_long_price == 0:
             logger.warning("shift_zero_price_new_hedge", extra={"symbol": symbol,
                            "leg": new_long_inst.trading_symbol})
-            pos.fo_ban_failures += 1
-            if pos.fo_ban_failures >= 5:
-                pos.fo_ban_suspended = True
-                pos.fo_ban_suspended_at = time.time()
-                self._trade_logger.log(
-                    EventType.SHIFT_FAILED, symbol,
-                    {"trigger_side": trigger_side, "failed_step": "buy_new_hedge",
-                     "reason": "fo_ban_suspended_after_5_failures",
-                     "ban_error": "zero_quote_on_new_hedge"},
-                    level="WARNING",
-                )
-            else:
-                self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_new_hedge_zero_price")
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_new_hedge_zero_price")
             pos.state = "OPEN"
             return
 
@@ -1514,25 +1502,9 @@ class CondorRunner:
         )
 
         if not oid_step2 and qty_step2 == 0:
-            # Full failure — no fill at all
+            # Full failure — no fill at all; return OPEN so monitor retries next cycle
             logger.error("shift_entry_long_failed", extra={"symbol": symbol})
-            if "ban period" in self._last_order_error_msg.lower():
-                pos.fo_ban_failures += 1
-                if pos.fo_ban_failures >= 5:
-                    pos.fo_ban_suspended = True
-                    pos.fo_ban_suspended_at = time.time()
-                    logger.warning("shift_fo_ban_suspended", extra={"symbol": symbol, "failures": pos.fo_ban_failures})
-                    self._trade_logger.log(
-                        EventType.SHIFT_FAILED, symbol,
-                        {"trigger_side": trigger_side, "failed_step": "buy_new_hedge",
-                         "reason": "fo_ban_suspended_after_5_failures",
-                         "ban_error": self._last_order_error_msg},
-                        level="WARNING",
-                    )
-                else:
-                    self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_new_hedge")
-            else:
-                self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_new_hedge")
+            self._trade_logger.log_shift_failed(symbol, trigger_side, "buy_new_hedge")
             pos.state = "OPEN"
             return
         elif oid_step2 and qty_step2 > 0 and qty_step2 < qty:

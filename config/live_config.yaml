@@ -71,9 +71,11 @@ zerodha:
 # ── Per-stock configurations ─────────────────────────────────────────────────
 # put_dist_pct:  Short put distance from spot as % of spot price
 # call_dist_pct: Short call distance from spot as % of spot price
-# premium_pct:   Entry gate AND take-profit (0–1 fraction of spread width).
-#                Entry: only enter when net_credit / spread_width >= premium_pct (keeps retrying all day).
-#                Take-profit: close when remaining cost <= (1 - premium_pct) × initial_credit.
+# premium_pct:   ENTRY GATE ONLY (0–1 fraction of spread width).
+#                Only enter when net_credit / spread_width >= premium_pct.
+#                Stock retries every 30 s until entry cutoff if gate not met.
+#                NOT the take-profit — exit fires when 85% of original credit captured
+#                (controlled by strategy.profit_target_pct).
 # enabled:       Set to false to exclude stock from session entries
 # expiry_type:   'monthly' = last Thursday of month (default for all stocks)
 #                'weekly'  = nearest Thursday in DTE window (for indices like NIFTY)

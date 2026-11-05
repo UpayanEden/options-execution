@@ -59,9 +59,12 @@ class StockConfig:
     """Distance of short call from spot as a percentage of spot price."""
 
     premium_pct: float
-    """Entry premium gate and take-profit threshold (0–1 fraction of spread width).
-    Entry: position is only entered when net_credit / spread_width >= premium_pct.
-    Take-profit: position is closed when remaining cost <= (1 - premium_pct) × initial_credit."""
+    """Entry premium gate (0–1 fraction of spread width).
+    Position is only entered when net_credit / spread_width >= premium_pct.
+    If the threshold is not met, the stock stays in the retry queue and is
+    re-tried with fresh quotes every 30 s until the entry cutoff.
+    This is NOT the take-profit threshold — exit is controlled by
+    strategy.profit_target_pct (default 85% of original credit)."""
 
     lots: int = 0
     """Fixed number of lots to trade. 0 = auto-size from available capital."""
