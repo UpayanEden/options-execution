@@ -1,0 +1,2820 @@
+[
+  {
+    "ts": "2026-10-29T10:23:58.914248+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "AMBUJACEM",
+    "config": "AMBUJACEM",
+    "_line": 3849
+  },
+  {
+    "ts": "2026-10-29T10:23:59.126912+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ANGELONE",
+    "config": "ANGELONE",
+    "_line": 3850
+  },
+  {
+    "ts": "2026-10-29T10:23:59.152285+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ASIANPAINT",
+    "config": "ASIANPAINT",
+    "_line": 3851
+  },
+  {
+    "ts": "2026-10-29T10:23:59.174259+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "AXISBANK",
+    "config": "AXISBANK",
+    "_line": 3852
+  },
+  {
+    "ts": "2026-10-29T10:23:59.201184+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BAJAJ-AUTO",
+    "config": "BAJAJ-AUTO",
+    "_line": 3853
+  },
+  {
+    "ts": "2026-10-29T10:23:59.224453+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BANKINDIA",
+    "config": "BANKINDIA",
+    "_line": 3854
+  },
+  {
+    "ts": "2026-10-29T10:23:59.250605+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BHARTIARTL",
+    "config": "BHARTIARTL",
+    "_line": 3855
+  },
+  {
+    "ts": "2026-10-29T10:23:59.274217+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BIOCON",
+    "config": "BIOCON",
+    "_line": 3856
+  },
+  {
+    "ts": "2026-10-29T10:23:59.297529+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BRITANNIA",
+    "config": "BRITANNIA",
+    "_line": 3857
+  },
+  {
+    "ts": "2026-10-29T10:23:59.320198+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "CDSL",
+    "config": "CDSL",
+    "_line": 3858
+  },
+  {
+    "ts": "2026-10-29T10:23:59.343741+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "COALINDIA",
+    "config": "COALINDIA",
+    "_line": 3859
+  },
+  {
+    "ts": "2026-10-29T10:23:59.368566+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "COCHINSHIP",
+    "config": "COCHINSHIP",
+    "_line": 3860
+  },
+  {
+    "ts": "2026-10-29T10:23:59.390077+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "DLF",
+    "config": "DLF",
+    "_line": 3861
+  },
+  {
+    "ts": "2026-10-29T10:23:59.415872+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "DIVISLAB",
+    "config": "DIVISLAB",
+    "_line": 3862
+  },
+  {
+    "ts": "2026-10-29T10:23:59.436954+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "DRREDDY",
+    "config": "DRREDDY",
+    "_line": 3863
+  },
+  {
+    "ts": "2026-10-29T10:23:59.459869+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "FEDERALBNK",
+    "config": "FEDERALBNK",
+    "_line": 3864
+  },
+  {
+    "ts": "2026-10-29T10:23:59.481531+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "GODREJPROP",
+    "config": "GODREJPROP",
+    "_line": 3865
+  },
+  {
+    "ts": "2026-10-29T10:23:59.505521+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "HDFCAMC",
+    "config": "HDFCAMC",
+    "_line": 3866
+  },
+  {
+    "ts": "2026-10-29T10:23:59.531002+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "HEROMOTOCO",
+    "config": "HEROMOTOCO",
+    "_line": 3867
+  },
+  {
+    "ts": "2026-10-29T10:23:59.559371+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "HYUNDAI",
+    "config": "HYUNDAI",
+    "_line": 3868
+  },
+  {
+    "ts": "2026-10-29T10:23:59.582299+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ICICIBANK",
+    "config": "ICICIBANK",
+    "_line": 3869
+  },
+  {
+    "ts": "2026-10-29T10:24:02.597493+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "M&M",
+    "config": "M&M",
+    "_line": 3870
+  },
+  {
+    "ts": "2026-10-29T10:24:02.634449+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "MARUTI",
+    "config": "MARUTI",
+    "_line": 3871
+  },
+  {
+    "ts": "2026-10-29T10:24:02.677192+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "MUTHOOTFIN",
+    "config": "MUTHOOTFIN",
+    "_line": 3872
+  },
+  {
+    "ts": "2026-10-29T10:24:02.709781+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "OBEROIRLTY",
+    "config": "OBEROIRLTY",
+    "_line": 3873
+  },
+  {
+    "ts": "2026-10-29T10:24:02.752360+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "PIDILITIND",
+    "config": "PIDILITIND",
+    "_line": 3874
+  },
+  {
+    "ts": "2026-10-29T10:24:02.784607+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "PRESTIGE",
+    "config": "PRESTIGE",
+    "_line": 3875
+  },
+  {
+    "ts": "2026-10-29T10:24:02.810898+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "RELIANCE",
+    "config": "RELIANCE",
+    "_line": 3876
+  },
+  {
+    "ts": "2026-10-29T10:24:02.833498+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SBIN",
+    "config": "SBIN",
+    "_line": 3877
+  },
+  {
+    "ts": "2026-10-29T10:24:02.856960+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SUNPHARMA",
+    "config": "SUNPHARMA",
+    "_line": 3878
+  },
+  {
+    "ts": "2026-10-29T10:24:02.881665+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SUZLON",
+    "config": "SUZLON",
+    "_line": 3879
+  },
+  {
+    "ts": "2026-10-29T10:24:02.906193+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "TITAN",
+    "config": "TITAN",
+    "_line": 3880
+  },
+  {
+    "ts": "2026-10-29T10:24:02.928863+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ULTRACEMCO",
+    "config": "ULTRACEMCO",
+    "_line": 3881
+  },
+  {
+    "ts": "2026-10-29T10:24:02.951897+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "VBL",
+    "config": "VBL",
+    "_line": 3882
+  },
+  {
+    "ts": "2026-10-29T10:24:02.974459+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "VEDL",
+    "config": "VEDL",
+    "_line": 3883
+  },
+  {
+    "ts": "2026-10-29T10:24:02.997616+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "WAAREEENER",
+    "config": "WAAREEENER",
+    "_line": 3884
+  },
+  {
+    "ts": "2026-10-29T10:24:03.674912+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "PROFIT_TARGET_EXIT",
+    "symbol": "NIFTY",
+    "original_credit": 173.55,
+    "current_credit": 11.2,
+    "profit_captured": 162.35,
+    "target": 147.5175,
+    "profit_target_pct": 85.0,
+    "_line": 3885
+  },
+  {
+    "ts": "2026-10-29T10:24:03.675301+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "TAKE_PROFIT_HIT",
+    "symbol": "NIFTY",
+    "reason": "PROFIT_TARGET",
+    "shift_count": 2,
+    "_line": 3886
+  },
+  {
+    "ts": "2026-10-29T10:24:03.675451+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "EXIT_ATTEMPT",
+    "symbol": "NIFTY",
+    "reason": "PROFIT_TARGET",
+    "_line": 3887
+  },
+  {
+    "ts": "2026-10-29T10:24:03.691910+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "NIFTY26N0322050PE",
+    "order_id": "bd8823a4-d407-471e-9884-af5543b71721",
+    "broker_order_id": null,
+    "side": "BUY",
+    "quantity": 65,
+    "limit_price": "10.95",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 3888
+  },
+  {
+    "ts": "2026-10-29T10:24:05.770901+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_CONFIRMED",
+    "symbol": "NIFTY26N0322050PE",
+    "broker_order_id": "2115668464068124672",
+    "side": "BUY",
+    "fill_price": "10.95",
+    "quantity": 65,
+    "attempt": 1,
+    "_line": 3889
+  },
+  {
+    "ts": "2026-10-29T10:24:05.771197+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "NIFTY26N0323500CE",
+    "order_id": "c69684da-85e0-48a2-8c41-b3aa3129efac",
+    "broker_order_id": null,
+    "side": "BUY",
+    "quantity": 65,
+    "limit_price": "6.05",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 3890
+  },
+  {
+    "ts": "2026-10-29T10:24:07.849232+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_CONFIRMED",
+    "symbol": "NIFTY26N0323500CE",
+    "broker_order_id": "2115668472796475392",
+    "side": "BUY",
+    "fill_price": "6.05",
+    "quantity": 65,
+    "attempt": 1,
+    "_line": 3891
+  },
+  {
+    "ts": "2026-10-29T10:24:07.849509+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "NIFTY26N0321600PE",
+    "order_id": "982c6e0d-3f11-4ce4-9a92-7107a8765863",
+    "broker_order_id": null,
+    "side": "SELL",
+    "quantity": 65,
+    "limit_price": "4",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 3892
+  },
+  {
+    "ts": "2026-10-29T10:24:09.928017+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_CONFIRMED",
+    "symbol": "NIFTY26N0321600PE",
+    "broker_order_id": "2115668481516429312",
+    "side": "SELL",
+    "fill_price": "4",
+    "quantity": 65,
+    "attempt": 1,
+    "_line": 3893
+  },
+  {
+    "ts": "2026-10-29T10:24:09.928253+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "NIFTY26N0321600PE",
+    "order_id": "982c6e0d-3f11-4ce4-9a92-7107a8765863",
+    "broker_order_id": null,
+    "side": "SELL",
+    "quantity": 65,
+    "limit_price": "4",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 3894
+  },
+  {
+    "ts": "2026-10-29T10:24:09.928426+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "NIFTY26N0323950CE",
+    "order_id": "ae7a27c1-4514-4981-aec5-4d1e3266b107",
+    "broker_order_id": null,
+    "side": "SELL",
+    "quantity": 65,
+    "limit_price": "1.55",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 3895
+  },
+  {
+    "ts": "2026-10-29T10:24:12.004940+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_CONFIRMED",
+    "symbol": "NIFTY26N0323950CE",
+    "broker_order_id": "2115668490228002816",
+    "side": "SELL",
+    "fill_price": "1.55",
+    "quantity": 65,
+    "attempt": 1,
+    "_line": 3896
+  },
+  {
+    "ts": "2026-10-29T10:24:12.005133+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "NIFTY26N0323950CE",
+    "order_id": "ae7a27c1-4514-4981-aec5-4d1e3266b107",
+    "broker_order_id": null,
+    "side": "SELL",
+    "quantity": 65,
+    "limit_price": "1.55",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 3897
+  },
+  {
+    "ts": "2026-10-29T10:24:12.012538+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "EXIT_SUCCESS",
+    "symbol": "NIFTY",
+    "reason": "PROFIT_TARGET",
+    "entry_credit": 173.55,
+    "exit_debit": 11.45,
+    "pnl": 10536.5,
+    "_line": 3898
+  },
+  {
+    "ts": "2026-10-29T11:42:25.806083+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ANGELONE",
+    "config": "ANGELONE",
+    "_line": 3899
+  },
+  {
+    "ts": "2026-10-29T11:42:25.851937+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ASIANPAINT",
+    "config": "ASIANPAINT",
+    "_line": 3900
+  },
+  {
+    "ts": "2026-10-29T11:42:25.870045+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "AXISBANK",
+    "config": "AXISBANK",
+    "_line": 3901
+  },
+  {
+    "ts": "2026-10-29T11:42:25.886864+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BAJAJ-AUTO",
+    "config": "BAJAJ-AUTO",
+    "_line": 3902
+  },
+  {
+    "ts": "2026-10-29T11:42:25.901722+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BANKINDIA",
+    "config": "BANKINDIA",
+    "_line": 3903
+  },
+  {
+    "ts": "2026-10-29T11:42:25.920735+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BHARTIARTL",
+    "config": "BHARTIARTL",
+    "_line": 3904
+  },
+  {
+    "ts": "2026-10-29T11:42:25.937016+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "COALINDIA",
+    "config": "COALINDIA",
+    "_line": 3905
+  },
+  {
+    "ts": "2026-10-29T11:42:25.961157+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "HEROMOTOCO",
+    "config": "HEROMOTOCO",
+    "_line": 3906
+  },
+  {
+    "ts": "2026-10-29T11:42:25.976349+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ICICIBANK",
+    "config": "ICICIBANK",
+    "_line": 3907
+  },
+  {
+    "ts": "2026-10-29T11:42:25.990253+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "M&M",
+    "config": "M&M",
+    "_line": 3908
+  },
+  {
+    "ts": "2026-10-29T11:42:26.004951+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "MARUTI",
+    "config": "MARUTI",
+    "_line": 3909
+  },
+  {
+    "ts": "2026-10-29T11:42:26.018571+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "MUTHOOTFIN",
+    "config": "MUTHOOTFIN",
+    "_line": 3910
+  },
+  {
+    "ts": "2026-10-29T11:42:26.034046+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "OBEROIRLTY",
+    "config": "OBEROIRLTY",
+    "_line": 3911
+  },
+  {
+    "ts": "2026-10-29T11:42:26.049520+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SBIN",
+    "config": "SBIN",
+    "_line": 3912
+  },
+  {
+    "ts": "2026-10-29T11:42:26.064410+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SUNPHARMA",
+    "config": "SUNPHARMA",
+    "_line": 3913
+  },
+  {
+    "ts": "2026-10-29T11:42:26.079953+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SUZLON",
+    "config": "SUZLON",
+    "_line": 3914
+  },
+  {
+    "ts": "2026-10-29T11:42:26.096481+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "TITAN",
+    "config": "TITAN",
+    "_line": 3915
+  },
+  {
+    "ts": "2026-10-29T11:42:26.110609+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ULTRACEMCO",
+    "config": "ULTRACEMCO",
+    "_line": 3916
+  },
+  {
+    "ts": "2026-10-29T11:42:26.124464+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "WAAREEENER",
+    "config": "WAAREEENER",
+    "_line": 3917
+  },
+  {
+    "ts": "2026-10-29T11:49:54.750695+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ANGELONE",
+    "config": "ANGELONE",
+    "_line": 3918
+  },
+  {
+    "ts": "2026-10-29T11:49:54.795134+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ASIANPAINT",
+    "config": "ASIANPAINT",
+    "_line": 3919
+  },
+  {
+    "ts": "2026-10-29T11:49:54.819693+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "AXISBANK",
+    "config": "AXISBANK",
+    "_line": 3920
+  },
+  {
+    "ts": "2026-10-29T11:49:54.840772+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BAJAJ-AUTO",
+    "config": "BAJAJ-AUTO",
+    "_line": 3921
+  },
+  {
+    "ts": "2026-10-29T11:49:54.860118+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BANKINDIA",
+    "config": "BANKINDIA",
+    "_line": 3922
+  },
+  {
+    "ts": "2026-10-29T11:49:54.879497+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BHARTIARTL",
+    "config": "BHARTIARTL",
+    "_line": 3923
+  },
+  {
+    "ts": "2026-10-29T11:49:54.896616+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "COALINDIA",
+    "config": "COALINDIA",
+    "_line": 3924
+  },
+  {
+    "ts": "2026-10-29T11:49:54.910829+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "HEROMOTOCO",
+    "config": "HEROMOTOCO",
+    "_line": 3925
+  },
+  {
+    "ts": "2026-10-29T11:49:54.929525+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ICICIBANK",
+    "config": "ICICIBANK",
+    "_line": 3926
+  },
+  {
+    "ts": "2026-10-29T11:49:54.945598+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "M&M",
+    "config": "M&M",
+    "_line": 3927
+  },
+  {
+    "ts": "2026-10-29T11:49:54.968433+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "MARUTI",
+    "config": "MARUTI",
+    "_line": 3928
+  },
+  {
+    "ts": "2026-10-29T11:49:54.981784+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "MUTHOOTFIN",
+    "config": "MUTHOOTFIN",
+    "_line": 3929
+  },
+  {
+    "ts": "2026-10-29T11:49:55.001724+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "OBEROIRLTY",
+    "config": "OBEROIRLTY",
+    "_line": 3930
+  },
+  {
+    "ts": "2026-10-29T11:49:55.025936+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SBIN",
+    "config": "SBIN",
+    "_line": 3931
+  },
+  {
+    "ts": "2026-10-29T11:49:55.045021+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SUNPHARMA",
+    "config": "SUNPHARMA",
+    "_line": 3932
+  },
+  {
+    "ts": "2026-10-29T11:49:55.060816+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SUZLON",
+    "config": "SUZLON",
+    "_line": 3933
+  },
+  {
+    "ts": "2026-10-29T11:49:55.083334+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "TITAN",
+    "config": "TITAN",
+    "_line": 3934
+  },
+  {
+    "ts": "2026-10-29T11:49:55.101757+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ULTRACEMCO",
+    "config": "ULTRACEMCO",
+    "_line": 3935
+  },
+  {
+    "ts": "2026-10-29T11:49:55.120423+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "WAAREEENER",
+    "config": "WAAREEENER",
+    "_line": 3936
+  },
+  {
+    "ts": "2026-10-29T11:55:18.795506+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ANGELONE",
+    "config": "ANGELONE",
+    "_line": 3937
+  },
+  {
+    "ts": "2026-10-29T11:55:19.013243+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ASIANPAINT",
+    "config": "ASIANPAINT",
+    "_line": 3938
+  },
+  {
+    "ts": "2026-10-29T11:55:19.039098+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "AXISBANK",
+    "config": "AXISBANK",
+    "_line": 3939
+  },
+  {
+    "ts": "2026-10-29T11:55:19.069376+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BAJAJ-AUTO",
+    "config": "BAJAJ-AUTO",
+    "_line": 3940
+  },
+  {
+    "ts": "2026-10-29T11:55:19.098021+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BANKINDIA",
+    "config": "BANKINDIA",
+    "_line": 3941
+  },
+  {
+    "ts": "2026-10-29T11:55:19.124574+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BHARTIARTL",
+    "config": "BHARTIARTL",
+    "_line": 3942
+  },
+  {
+    "ts": "2026-10-29T11:55:19.154560+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "COALINDIA",
+    "config": "COALINDIA",
+    "_line": 3943
+  },
+  {
+    "ts": "2026-10-29T11:55:19.187331+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "HEROMOTOCO",
+    "config": "HEROMOTOCO",
+    "_line": 3944
+  },
+  {
+    "ts": "2026-10-29T11:55:19.221011+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ICICIBANK",
+    "config": "ICICIBANK",
+    "_line": 3945
+  },
+  {
+    "ts": "2026-10-29T11:55:19.253268+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "M&M",
+    "config": "M&M",
+    "_line": 3946
+  },
+  {
+    "ts": "2026-10-29T11:55:19.281402+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "MARUTI",
+    "config": "MARUTI",
+    "_line": 3947
+  },
+  {
+    "ts": "2026-10-29T11:55:19.308038+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "MUTHOOTFIN",
+    "config": "MUTHOOTFIN",
+    "_line": 3948
+  },
+  {
+    "ts": "2026-10-29T11:55:19.352965+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "OBEROIRLTY",
+    "config": "OBEROIRLTY",
+    "_line": 3949
+  },
+  {
+    "ts": "2026-10-29T11:55:19.383266+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SBIN",
+    "config": "SBIN",
+    "_line": 3950
+  },
+  {
+    "ts": "2026-10-29T11:55:19.410662+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SUNPHARMA",
+    "config": "SUNPHARMA",
+    "_line": 3951
+  },
+  {
+    "ts": "2026-10-29T11:55:19.436865+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SUZLON",
+    "config": "SUZLON",
+    "_line": 3952
+  },
+  {
+    "ts": "2026-10-29T11:55:19.464179+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "TITAN",
+    "config": "TITAN",
+    "_line": 3953
+  },
+  {
+    "ts": "2026-10-29T11:55:19.490028+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ULTRACEMCO",
+    "config": "ULTRACEMCO",
+    "_line": 3954
+  },
+  {
+    "ts": "2026-10-29T11:55:19.514528+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "WAAREEENER",
+    "config": "WAAREEENER",
+    "_line": 3955
+  },
+  {
+    "ts": "2026-10-29T11:59:16.822668+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ANGELONE",
+    "config": "ANGELONE",
+    "_line": 3956
+  },
+  {
+    "ts": "2026-10-29T11:59:17.234275+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "GUARD_FAIL",
+    "symbol": "ANGELONE",
+    "guard_report": {
+      "passed": false,
+      "first_failure": "QuoteGuard",
+      "layers": [
+        {
+          "layer": "InstrumentGuard",
+          "passed": true,
+          "reason": "All instruments valid",
+          "data": {
+            "ANGELONE26NOV280PE_dte": 25,
+            "ANGELONE26NOV280PE_strike_deviation_pct": 0.0,
+            "ANGELONE26NOV270PE_dte": 25,
+            "ANGELONE26NOV270PE_strike_deviation_pct": 0.0,
+            "ANGELONE26NOV310CE_dte": 25,
+            "ANGELONE26NOV310CE_strike_deviation_pct": 0.0,
+            "ANGELONE26NOV315CE_dte": 25,
+            "ANGELONE26NOV315CE_strike_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "QuoteGuard",
+          "passed": false,
+          "reason": "ANGELONE26NOV280PE: quote age 65.2s > 10s; ANGELONE26NOV270PE: quote age 47.2s > 10s; ANGELONE26NOV310CE: quote age 64.2s > 10s; ANGELONE26NOV315CE: quote age 58.2s > 10s",
+          "data": {
+            "ANGELONE26NOV280PE_age_s": 65.2,
+            "ANGELONE26NOV270PE_age_s": 47.2,
+            "ANGELONE26NOV310CE_age_s": 64.2,
+            "ANGELONE26NOV315CE_age_s": 58.2
+          }
+        },
+        {
+          "layer": "OrderGuard",
+          "passed": true,
+          "reason": "Order parameters valid",
+          "data": {
+            "ANGELONE26NOV280PE_price_check": "PASS",
+            "ANGELONE26NOV270PE_price_check": "PASS",
+            "ANGELONE26NOV310CE_price_check": "PASS",
+            "ANGELONE26NOV315CE_price_check": "PASS"
+          }
+        },
+        {
+          "layer": "PositionGuard",
+          "passed": true,
+          "reason": "Position state valid",
+          "data": {
+            "open_condors": 0,
+            "max_open_positions": 10
+          }
+        },
+        {
+          "layer": "CapitalGuard",
+          "passed": true,
+          "reason": "Capital checks passed",
+          "data": {
+            "estimated_margin": 70296.0,
+            "available_margin": 959345.81,
+            "total_allocated": 0,
+            "daily_pnl": 0.0,
+            "required_cash": 35148.0,
+            "projected_total": 70296.0
+          }
+        }
+      ]
+    },
+    "_line": 3957
+  },
+  {
+    "ts": "2026-10-29T11:59:17.234738+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ASIANPAINT",
+    "config": "ASIANPAINT",
+    "_line": 3958
+  },
+  {
+    "ts": "2026-10-29T11:59:17.425824+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "GUARD_FAIL",
+    "symbol": "ASIANPAINT",
+    "guard_report": {
+      "passed": false,
+      "first_failure": "QuoteGuard",
+      "layers": [
+        {
+          "layer": "InstrumentGuard",
+          "passed": true,
+          "reason": "All instruments valid",
+          "data": {
+            "ASIANPAINT26NOV2180PE_dte": 25,
+            "ASIANPAINT26NOV2180PE_strike_deviation_pct": 0.0,
+            "ASIANPAINT26NOV2140PE_dte": 25,
+            "ASIANPAINT26NOV2140PE_strike_deviation_pct": 0.0,
+            "ASIANPAINT26NOV2360CE_dte": 25,
+            "ASIANPAINT26NOV2360CE_strike_deviation_pct": 0.0,
+            "ASIANPAINT26NOV2420CE_dte": 25,
+            "ASIANPAINT26NOV2420CE_strike_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "QuoteGuard",
+          "passed": false,
+          "reason": "ASIANPAINT26NOV2360CE: quote age 12.4s > 10s",
+          "data": {
+            "ASIANPAINT26NOV2180PE_age_s": 4.4,
+            "ASIANPAINT26NOV2180PE_mid": 33.175,
+            "ASIANPAINT26NOV2180PE_spread_pct": 1.356443104747551,
+            "ASIANPAINT26NOV2180PE_ltp_deviation_pct": 3.84,
+            "ASIANPAINT26NOV2140PE_age_s": 4.4,
+            "ASIANPAINT26NOV2140PE_mid": 23.575,
+            "ASIANPAINT26NOV2140PE_spread_pct": 1.9088016967126193,
+            "ASIANPAINT26NOV2140PE_ltp_deviation_pct": 3.92,
+            "ASIANPAINT26NOV2360CE_age_s": 12.4,
+            "ASIANPAINT26NOV2420CE_age_s": 3.4,
+            "ASIANPAINT26NOV2420CE_mid": 21.2,
+            "ASIANPAINT26NOV2420CE_spread_pct": 1.8867924528301887,
+            "ASIANPAINT26NOV2420CE_ltp_deviation_pct": 4.48
+          }
+        },
+        {
+          "layer": "OrderGuard",
+          "passed": true,
+          "reason": "Order parameters valid",
+          "data": {
+            "ASIANPAINT26NOV2180PE_price_check": "PASS",
+            "ASIANPAINT26NOV2140PE_price_check": "PASS",
+            "ASIANPAINT26NOV2360CE_price_check": "PASS",
+            "ASIANPAINT26NOV2420CE_price_check": "PASS"
+          }
+        },
+        {
+          "layer": "PositionGuard",
+          "passed": true,
+          "reason": "Position state valid",
+          "data": {
+            "open_condors": 0,
+            "max_open_positions": 10
+          }
+        },
+        {
+          "layer": "CapitalGuard",
+          "passed": true,
+          "reason": "Capital checks passed",
+          "data": {
+            "estimated_margin": 40953.6,
+            "available_margin": 959345.81,
+            "total_allocated": 0,
+            "daily_pnl": 0.0,
+            "required_cash": 20476.8,
+            "projected_total": 40953.6
+          }
+        }
+      ]
+    },
+    "_line": 3959
+  },
+  {
+    "ts": "2026-10-29T11:59:17.426313+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "AXISBANK",
+    "config": "AXISBANK",
+    "_line": 3960
+  },
+  {
+    "ts": "2026-10-29T11:59:17.594971+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "GUARD_FAIL",
+    "symbol": "AXISBANK",
+    "guard_report": {
+      "passed": false,
+      "first_failure": "QuoteGuard",
+      "layers": [
+        {
+          "layer": "InstrumentGuard",
+          "passed": true,
+          "reason": "All instruments valid",
+          "data": {
+            "AXISBANK26NOV1170PE_dte": 25,
+            "AXISBANK26NOV1170PE_strike_deviation_pct": 0.0,
+            "AXISBANK26NOV1150PE_dte": 25,
+            "AXISBANK26NOV1150PE_strike_deviation_pct": 0.0,
+            "AXISBANK26NOV1270CE_dte": 25,
+            "AXISBANK26NOV1270CE_strike_deviation_pct": 0.0,
+            "AXISBANK26NOV1290CE_dte": 25,
+            "AXISBANK26NOV1290CE_strike_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "QuoteGuard",
+          "passed": false,
+          "reason": "AXISBANK26NOV1170PE: quote age 32.6s > 10s; AXISBANK26NOV1150PE: quote age 17.6s > 10s; AXISBANK26NOV1270CE: quote age 32.6s > 10s; AXISBANK26NOV1290CE: quote age 32.6s > 10s",
+          "data": {
+            "AXISBANK26NOV1170PE_age_s": 32.6,
+            "AXISBANK26NOV1150PE_age_s": 17.6,
+            "AXISBANK26NOV1270CE_age_s": 32.6,
+            "AXISBANK26NOV1290CE_age_s": 32.6
+          }
+        },
+        {
+          "layer": "OrderGuard",
+          "passed": true,
+          "reason": "Order parameters valid",
+          "data": {
+            "AXISBANK26NOV1170PE_price_check": "PASS",
+            "AXISBANK26NOV1150PE_price_check": "PASS",
+            "AXISBANK26NOV1270CE_price_check": "PASS",
+            "AXISBANK26NOV1290CE_price_check": "PASS"
+          }
+        },
+        {
+          "layer": "PositionGuard",
+          "passed": true,
+          "reason": "Position state valid",
+          "data": {
+            "open_condors": 0,
+            "max_open_positions": 10
+          }
+        },
+        {
+          "layer": "CapitalGuard",
+          "passed": true,
+          "reason": "Capital checks passed",
+          "data": {
+            "estimated_margin": 54940.5,
+            "available_margin": 959345.81,
+            "total_allocated": 0,
+            "daily_pnl": 0.0,
+            "required_cash": 27470.25,
+            "projected_total": 54940.5
+          }
+        }
+      ]
+    },
+    "_line": 3961
+  },
+  {
+    "ts": "2026-10-29T11:59:17.595463+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BAJAJ-AUTO",
+    "config": "BAJAJ-AUTO",
+    "_line": 3962
+  },
+  {
+    "ts": "2026-10-29T11:59:17.795888+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "GUARD_FAIL",
+    "symbol": "BAJAJ-AUTO",
+    "guard_report": {
+      "passed": false,
+      "first_failure": "QuoteGuard",
+      "layers": [
+        {
+          "layer": "InstrumentGuard",
+          "passed": true,
+          "reason": "All instruments valid",
+          "data": {
+            "BAJAJ-AUTO26NOV9800PE_dte": 25,
+            "BAJAJ-AUTO26NOV9800PE_strike_deviation_pct": 0.0,
+            "BAJAJ-AUTO26NOV9600PE_dte": 25,
+            "BAJAJ-AUTO26NOV9600PE_strike_deviation_pct": 0.0,
+            "BAJAJ-AUTO26NOV10900CE_dte": 25,
+            "BAJAJ-AUTO26NOV10900CE_strike_deviation_pct": 0.0,
+            "BAJAJ-AUTO26NOV11100CE_dte": 25,
+            "BAJAJ-AUTO26NOV11100CE_strike_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "QuoteGuard",
+          "passed": false,
+          "reason": "BAJAJ-AUTO26NOV9800PE: quote age 61.8s > 10s; BAJAJ-AUTO26NOV9600PE: quote age 47.8s > 10s; BAJAJ-AUTO26NOV11100CE: quote age 16.8s > 10s",
+          "data": {
+            "BAJAJ-AUTO26NOV9800PE_age_s": 61.8,
+            "BAJAJ-AUTO26NOV9600PE_age_s": 47.8,
+            "BAJAJ-AUTO26NOV10900CE_age_s": 1.8,
+            "BAJAJ-AUTO26NOV10900CE_mid": 88.475,
+            "BAJAJ-AUTO26NOV10900CE_spread_pct": 0.8476970895733258,
+            "BAJAJ-AUTO26NOV10900CE_ltp_deviation_pct": 0.48,
+            "BAJAJ-AUTO26NOV11100CE_age_s": 16.8
+          }
+        },
+        {
+          "layer": "OrderGuard",
+          "passed": true,
+          "reason": "Order parameters valid",
+          "data": {
+            "BAJAJ-AUTO26NOV9800PE_price_check": "PASS",
+            "BAJAJ-AUTO26NOV9600PE_price_check": "PASS",
+            "BAJAJ-AUTO26NOV10900CE_price_check": "PASS",
+            "BAJAJ-AUTO26NOV11100CE_price_check": "PASS"
+          }
+        },
+        {
+          "layer": "PositionGuard",
+          "passed": true,
+          "reason": "Position state valid",
+          "data": {
+            "open_condors": 0,
+            "max_open_positions": 10
+          }
+        },
+        {
+          "layer": "CapitalGuard",
+          "passed": true,
+          "reason": "Capital checks passed",
+          "data": {
+            "estimated_margin": 55949.4,
+            "available_margin": 959345.81,
+            "total_allocated": 0,
+            "daily_pnl": 0.0,
+            "required_cash": 27974.7,
+            "projected_total": 55949.4
+          }
+        }
+      ]
+    },
+    "_line": 3963
+  },
+  {
+    "ts": "2026-10-29T11:59:17.796366+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BANKINDIA",
+    "config": "BANKINDIA",
+    "_line": 3964
+  },
+  {
+    "ts": "2026-10-29T11:59:20.811248+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "BHARTIARTL",
+    "config": "BHARTIARTL",
+    "_line": 3965
+  },
+  {
+    "ts": "2026-10-29T11:59:20.998062+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "GUARD_PASS",
+    "symbol": "BHARTIARTL",
+    "passed": true,
+    "first_failure": null,
+    "layers": [
+      {
+        "layer": "InstrumentGuard",
+        "passed": true,
+        "reason": "All instruments valid",
+        "data": {
+          "BHARTIARTL26NOV1860PE_dte": 25,
+          "BHARTIARTL26NOV1860PE_strike_deviation_pct": 0.0,
+          "BHARTIARTL26NOV1820PE_dte": 25,
+          "BHARTIARTL26NOV1820PE_strike_deviation_pct": 0.0,
+          "BHARTIARTL26NOV2060CE_dte": 25,
+          "BHARTIARTL26NOV2060CE_strike_deviation_pct": 0.0,
+          "BHARTIARTL26NOV2100CE_dte": 25,
+          "BHARTIARTL26NOV2100CE_strike_deviation_pct": 0.0
+        }
+      },
+      {
+        "layer": "QuoteGuard",
+        "passed": true,
+        "reason": "All quotes valid",
+        "data": {
+          "BHARTIARTL26NOV1860PE_age_s": 3.0,
+          "BHARTIARTL26NOV1860PE_mid": 10.175,
+          "BHARTIARTL26NOV1860PE_spread_pct": 1.4742014742014742,
+          "BHARTIARTL26NOV1860PE_ltp_deviation_pct": 1.23,
+          "BHARTIARTL26NOV1820PE_age_s": 3.0,
+          "BHARTIARTL26NOV1820PE_mid": 5.9,
+          "BHARTIARTL26NOV1820PE_spread_pct": 1.694915254237288,
+          "BHARTIARTL26NOV1820PE_ltp_deviation_pct": 0.85,
+          "BHARTIARTL26NOV2060CE_age_s": 3.0,
+          "BHARTIARTL26NOV2060CE_mid": 14.275,
+          "BHARTIARTL26NOV2060CE_spread_pct": 1.0507880910683012,
+          "BHARTIARTL26NOV2060CE_ltp_deviation_pct": 1.23,
+          "BHARTIARTL26NOV2100CE_age_s": 3.0,
+          "BHARTIARTL26NOV2100CE_mid": 8.225,
+          "BHARTIARTL26NOV2100CE_spread_pct": 1.8237082066869301,
+          "BHARTIARTL26NOV2100CE_ltp_deviation_pct": 3.34
+        }
+      },
+      {
+        "layer": "OrderGuard",
+        "passed": true,
+        "reason": "Order parameters valid",
+        "data": {
+          "BHARTIARTL26NOV1860PE_price_check": "PASS",
+          "BHARTIARTL26NOV1820PE_price_check": "PASS",
+          "BHARTIARTL26NOV2060CE_price_check": "PASS",
+          "BHARTIARTL26NOV2100CE_price_check": "PASS"
+        }
+      },
+      {
+        "layer": "PositionGuard",
+        "passed": true,
+        "reason": "Position state valid",
+        "data": {
+          "open_condors": 0,
+          "max_open_positions": 10
+        }
+      },
+      {
+        "layer": "CapitalGuard",
+        "passed": true,
+        "reason": "Capital checks passed",
+        "data": {
+          "estimated_margin": 67237.2,
+          "available_margin": 959345.81,
+          "total_allocated": 0,
+          "daily_pnl": 0.0,
+          "required_cash": 33618.6,
+          "projected_total": 67237.2
+        }
+      }
+    ],
+    "_line": 3966
+  },
+  {
+    "ts": "2026-10-29T11:59:20.998547+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "COALINDIA",
+    "config": "COALINDIA",
+    "_line": 3967
+  },
+  {
+    "ts": "2026-10-29T11:59:21.180175+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "GUARD_FAIL",
+    "symbol": "COALINDIA",
+    "guard_report": {
+      "passed": false,
+      "first_failure": "QuoteGuard",
+      "layers": [
+        {
+          "layer": "InstrumentGuard",
+          "passed": true,
+          "reason": "All instruments valid",
+          "data": {
+            "COALINDIA26NOV380PE_dte": 25,
+            "COALINDIA26NOV380PE_strike_deviation_pct": 0.0,
+            "COALINDIA26NOV370PE_dte": 25,
+            "COALINDIA26NOV370PE_strike_deviation_pct": 0.0,
+            "COALINDIA26NOV410CE_dte": 25,
+            "COALINDIA26NOV410CE_strike_deviation_pct": 0.0,
+            "COALINDIA26NOV420CE_dte": 25,
+            "COALINDIA26NOV420CE_strike_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "QuoteGuard",
+          "passed": false,
+          "reason": "COALINDIA26NOV380PE: quote age 21.2s > 10s; COALINDIA26NOV370PE: quote age 21.2s > 10s; COALINDIA26NOV420CE: quote age 21.2s > 10s",
+          "data": {
+            "COALINDIA26NOV380PE_age_s": 21.2,
+            "COALINDIA26NOV370PE_age_s": 21.2,
+            "COALINDIA26NOV410CE_age_s": 4.2,
+            "COALINDIA26NOV410CE_mid": 4.975,
+            "COALINDIA26NOV410CE_spread_pct": 1.0050251256281406,
+            "COALINDIA26NOV410CE_ltp_deviation_pct": 0.5,
+            "COALINDIA26NOV420CE_age_s": 21.2
+          }
+        },
+        {
+          "layer": "OrderGuard",
+          "passed": true,
+          "reason": "Order parameters valid",
+          "data": {
+            "COALINDIA26NOV380PE_price_check": "PASS",
+            "COALINDIA26NOV370PE_price_check": "PASS",
+            "COALINDIA26NOV410CE_price_check": "PASS",
+            "COALINDIA26NOV420CE_price_check": "PASS"
+          }
+        },
+        {
+          "layer": "PositionGuard",
+          "passed": true,
+          "reason": "Position state valid",
+          "data": {
+            "open_condors": 0,
+            "max_open_positions": 10
+          }
+        },
+        {
+          "layer": "CapitalGuard",
+          "passed": true,
+          "reason": "Capital checks passed",
+          "data": {
+            "estimated_margin": 38510.64,
+            "available_margin": 959345.81,
+            "total_allocated": 0,
+            "daily_pnl": 0.0,
+            "required_cash": 19255.32,
+            "projected_total": 38510.64
+          }
+        }
+      ]
+    },
+    "_line": 3968
+  },
+  {
+    "ts": "2026-10-29T11:59:21.180478+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "HEROMOTOCO",
+    "config": "HEROMOTOCO",
+    "_line": 3969
+  },
+  {
+    "ts": "2026-10-29T11:59:21.390301+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "GUARD_FAIL",
+    "symbol": "HEROMOTOCO",
+    "guard_report": {
+      "passed": false,
+      "first_failure": "QuoteGuard",
+      "layers": [
+        {
+          "layer": "InstrumentGuard",
+          "passed": true,
+          "reason": "All instruments valid",
+          "data": {
+            "HEROMOTOCO26NOV4900PE_dte": 25,
+            "HEROMOTOCO26NOV4900PE_strike_deviation_pct": 0.0,
+            "HEROMOTOCO26NOV4800PE_dte": 25,
+            "HEROMOTOCO26NOV4800PE_strike_deviation_pct": 0.0,
+            "HEROMOTOCO26NOV5450CE_dte": 25,
+            "HEROMOTOCO26NOV5450CE_strike_deviation_pct": 0.0,
+            "HEROMOTOCO26NOV5550CE_dte": 25,
+            "HEROMOTOCO26NOV5550CE_strike_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "QuoteGuard",
+          "passed": false,
+          "reason": "HEROMOTOCO26NOV4800PE: quote age 20.4s > 10s; HEROMOTOCO26NOV5550CE: quote age 10.4s > 10s",
+          "data": {
+            "HEROMOTOCO26NOV4900PE_age_s": 2.4,
+            "HEROMOTOCO26NOV4900PE_mid": 46.25,
+            "HEROMOTOCO26NOV4900PE_spread_pct": 0.8648648648648649,
+            "HEROMOTOCO26NOV4900PE_ltp_deviation_pct": 0.54,
+            "HEROMOTOCO26NOV4800PE_age_s": 20.4,
+            "HEROMOTOCO26NOV5450CE_age_s": 1.4,
+            "HEROMOTOCO26NOV5450CE_mid": 51.775,
+            "HEROMOTOCO26NOV5450CE_spread_pct": 1.448575567358764,
+            "HEROMOTOCO26NOV5450CE_ltp_deviation_pct": 1.3,
+            "HEROMOTOCO26NOV5550CE_age_s": 10.4
+          }
+        },
+        {
+          "layer": "OrderGuard",
+          "passed": true,
+          "reason": "Order parameters valid",
+          "data": {
+            "HEROMOTOCO26NOV4900PE_price_check": "PASS",
+            "HEROMOTOCO26NOV4800PE_price_check": "PASS",
+            "HEROMOTOCO26NOV5450CE_price_check": "PASS",
+            "HEROMOTOCO26NOV5550CE_price_check": "PASS"
+          }
+        },
+        {
+          "layer": "PositionGuard",
+          "passed": true,
+          "reason": "Position state valid",
+          "data": {
+            "open_condors": 0,
+            "max_open_positions": 10
+          }
+        },
+        {
+          "layer": "CapitalGuard",
+          "passed": true,
+          "reason": "Capital checks passed",
+          "data": {
+            "estimated_margin": 55960.2,
+            "available_margin": 959345.81,
+            "total_allocated": 0,
+            "daily_pnl": 0.0,
+            "required_cash": 27980.1,
+            "projected_total": 55960.2
+          }
+        }
+      ]
+    },
+    "_line": 3970
+  },
+  {
+    "ts": "2026-10-29T11:59:21.392933+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ICICIBANK",
+    "config": "ICICIBANK",
+    "_line": 3971
+  },
+  {
+    "ts": "2026-10-29T11:59:21.605019+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "GUARD_FAIL",
+    "symbol": "ICICIBANK",
+    "guard_report": {
+      "passed": false,
+      "first_failure": "QuoteGuard",
+      "layers": [
+        {
+          "layer": "InstrumentGuard",
+          "passed": true,
+          "reason": "All instruments valid",
+          "data": {
+            "ICICIBANK26NOV1320PE_dte": 25,
+            "ICICIBANK26NOV1320PE_strike_deviation_pct": 0.0,
+            "ICICIBANK26NOV1300PE_dte": 25,
+            "ICICIBANK26NOV1300PE_strike_deviation_pct": 0.0,
+            "ICICIBANK26NOV1430CE_dte": 25,
+            "ICICIBANK26NOV1430CE_strike_deviation_pct": 0.0,
+            "ICICIBANK26NOV1460CE_dte": 25,
+            "ICICIBANK26NOV1460CE_strike_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "QuoteGuard",
+          "passed": false,
+          "reason": "ICICIBANK26NOV1320PE: quote age 20.6s > 10s; ICICIBANK26NOV1300PE: quote age 20.6s > 10s",
+          "data": {
+            "ICICIBANK26NOV1320PE_age_s": 20.6,
+            "ICICIBANK26NOV1300PE_age_s": 20.6,
+            "ICICIBANK26NOV1430CE_age_s": 7.6,
+            "ICICIBANK26NOV1430CE_mid": 8.4,
+            "ICICIBANK26NOV1430CE_spread_pct": 1.1904761904761905,
+            "ICICIBANK26NOV1430CE_ltp_deviation_pct": 0.6,
+            "ICICIBANK26NOV1460CE_age_s": 1.6,
+            "ICICIBANK26NOV1460CE_mid": 3.775,
+            "ICICIBANK26NOV1460CE_spread_pct": 1.3245033112582782,
+            "ICICIBANK26NOV1460CE_ltp_deviation_pct": 0.66
+          }
+        },
+        {
+          "layer": "OrderGuard",
+          "passed": true,
+          "reason": "Order parameters valid",
+          "data": {
+            "ICICIBANK26NOV1320PE_price_check": "PASS",
+            "ICICIBANK26NOV1300PE_price_check": "PASS",
+            "ICICIBANK26NOV1430CE_price_check": "PASS",
+            "ICICIBANK26NOV1460CE_price_check": "PASS"
+          }
+        },
+        {
+          "layer": "PositionGuard",
+          "passed": true,
+          "reason": "Position state valid",
+          "data": {
+            "open_condors": 0,
+            "max_open_positions": 10
+          }
+        },
+        {
+          "layer": "CapitalGuard",
+          "passed": true,
+          "reason": "Capital checks passed",
+          "data": {
+            "estimated_margin": 69461.28,
+            "available_margin": 959345.81,
+            "total_allocated": 0,
+            "daily_pnl": 0.0,
+            "required_cash": 34730.64,
+            "projected_total": 69461.28
+          }
+        }
+      ]
+    },
+    "_line": 3972
+  },
+  {
+    "ts": "2026-10-29T11:59:21.605465+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "M&M",
+    "config": "M&M",
+    "_line": 3973
+  },
+  {
+    "ts": "2026-10-29T11:59:24.621856+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "MARUTI",
+    "config": "MARUTI",
+    "_line": 3974
+  },
+  {
+    "ts": "2026-10-29T11:59:24.813453+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "GUARD_FAIL",
+    "symbol": "MARUTI",
+    "guard_report": {
+      "passed": false,
+      "first_failure": "QuoteGuard",
+      "layers": [
+        {
+          "layer": "InstrumentGuard",
+          "passed": true,
+          "reason": "All instruments valid",
+          "data": {
+            "MARUTI26NOV10900PE_dte": 25,
+            "MARUTI26NOV10900PE_strike_deviation_pct": 0.0,
+            "MARUTI26NOV10700PE_dte": 25,
+            "MARUTI26NOV10700PE_strike_deviation_pct": 0.0,
+            "MARUTI26NOV12100CE_dte": 25,
+            "MARUTI26NOV12100CE_strike_deviation_pct": 0.0,
+            "MARUTI26NOV12300CE_dte": 25,
+            "MARUTI26NOV12300CE_strike_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "QuoteGuard",
+          "passed": false,
+          "reason": "MARUTI26NOV10900PE: quote age 33.8s > 10s; MARUTI26NOV10700PE: quote age 33.8s > 10s",
+          "data": {
+            "MARUTI26NOV10900PE_age_s": 33.8,
+            "MARUTI26NOV10700PE_age_s": 33.8,
+            "MARUTI26NOV12100CE_age_s": 0.8,
+            "MARUTI26NOV12100CE_mid": 90.325,
+            "MARUTI26NOV12100CE_spread_pct": 0.7196235815112095,
+            "MARUTI26NOV12100CE_ltp_deviation_pct": 0.08,
+            "MARUTI26NOV12300CE_age_s": 3.8,
+            "MARUTI26NOV12300CE_mid": 57.075,
+            "MARUTI26NOV12300CE_spread_pct": 0.9636443276390714,
+            "MARUTI26NOV12300CE_ltp_deviation_pct": 0.57
+          }
+        },
+        {
+          "layer": "OrderGuard",
+          "passed": true,
+          "reason": "Order parameters valid",
+          "data": {
+            "MARUTI26NOV10900PE_price_check": "PASS",
+            "MARUTI26NOV10700PE_price_check": "PASS",
+            "MARUTI26NOV12100CE_price_check": "PASS",
+            "MARUTI26NOV12300CE_price_check": "PASS"
+          }
+        },
+        {
+          "layer": "PositionGuard",
+          "passed": true,
+          "reason": "Position state valid",
+          "data": {
+            "open_condors": 0,
+            "max_open_positions": 10
+          }
+        },
+        {
+          "layer": "CapitalGuard",
+          "passed": true,
+          "reason": "Capital checks passed",
+          "data": {
+            "estimated_margin": 41421.6,
+            "available_margin": 959345.81,
+            "total_allocated": 0,
+            "daily_pnl": 0.0,
+            "required_cash": 20710.8,
+            "projected_total": 41421.6
+          }
+        }
+      ]
+    },
+    "_line": 3975
+  },
+  {
+    "ts": "2026-10-29T11:59:24.814841+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "MUTHOOTFIN",
+    "config": "MUTHOOTFIN",
+    "_line": 3976
+  },
+  {
+    "ts": "2026-10-29T11:59:24.995575+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "GUARD_FAIL",
+    "symbol": "MUTHOOTFIN",
+    "guard_report": {
+      "passed": false,
+      "first_failure": "QuoteGuard",
+      "layers": [
+        {
+          "layer": "InstrumentGuard",
+          "passed": true,
+          "reason": "All instruments valid",
+          "data": {
+            "MUTHOOTFIN26NOV2350PE_dte": 25,
+            "MUTHOOTFIN26NOV2350PE_strike_deviation_pct": 0.0,
+            "MUTHOOTFIN26NOV2300PE_dte": 25,
+            "MUTHOOTFIN26NOV2300PE_strike_deviation_pct": 0.0,
+            "MUTHOOTFIN26NOV2550CE_dte": 25,
+            "MUTHOOTFIN26NOV2550CE_strike_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "QuoteGuard",
+          "passed": false,
+          "reason": "MUTHOOTFIN26NOV2350PE: quote age 28.0s > 10s; MUTHOOTFIN26NOV2300PE: quote age 12.0s > 10s; MUTHOOTFIN26NOV2550CE: quote age 21.0s > 10s",
+          "data": {
+            "MUTHOOTFIN26NOV2350PE_age_s": 28.0,
+            "MUTHOOTFIN26NOV2300PE_age_s": 12.0,
+            "MUTHOOTFIN26NOV2550CE_age_s": 21.0
+          }
+        },
+        {
+          "layer": "OrderGuard",
+          "passed": true,
+          "reason": "Order parameters valid",
+          "data": {
+            "MUTHOOTFIN26NOV2350PE_price_check": "PASS",
+            "MUTHOOTFIN26NOV2300PE_price_check": "PASS",
+            "MUTHOOTFIN26NOV2550CE_price_check": "PASS"
+          }
+        },
+        {
+          "layer": "PositionGuard",
+          "passed": true,
+          "reason": "Position state valid",
+          "data": {
+            "open_condors": 0,
+            "max_open_positions": 10
+          }
+        },
+        {
+          "layer": "CapitalGuard",
+          "passed": true,
+          "reason": "Capital checks passed",
+          "data": {
+            "estimated_margin": 48076.38,
+            "available_margin": 959345.81,
+            "total_allocated": 0,
+            "daily_pnl": 0.0,
+            "required_cash": 24038.19,
+            "projected_total": 48076.38
+          }
+        }
+      ]
+    },
+    "_line": 3977
+  },
+  {
+    "ts": "2026-10-29T11:59:24.996065+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "OBEROIRLTY",
+    "config": "OBEROIRLTY",
+    "_line": 3978
+  },
+  {
+    "ts": "2026-10-29T11:59:25.180838+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "GUARD_PASS",
+    "symbol": "OBEROIRLTY",
+    "passed": true,
+    "first_failure": null,
+    "layers": [
+      {
+        "layer": "InstrumentGuard",
+        "passed": true,
+        "reason": "All instruments valid",
+        "data": {
+          "OBEROIRLTY26NOV1520PE_dte": 25,
+          "OBEROIRLTY26NOV1520PE_strike_deviation_pct": 0.0,
+          "OBEROIRLTY26NOV1480PE_dte": 25,
+          "OBEROIRLTY26NOV1480PE_strike_deviation_pct": 0.0,
+          "OBEROIRLTY26NOV1680CE_dte": 25,
+          "OBEROIRLTY26NOV1680CE_strike_deviation_pct": 0.0,
+          "OBEROIRLTY26NOV1720CE_dte": 25,
+          "OBEROIRLTY26NOV1720CE_strike_deviation_pct": 0.0
+        }
+      },
+      {
+        "layer": "QuoteGuard",
+        "passed": true,
+        "reason": "All quotes valid",
+        "data": {
+          "OBEROIRLTY26NOV1520PE_age_s": 6.2,
+          "OBEROIRLTY26NOV1520PE_mid": 13.575,
+          "OBEROIRLTY26NOV1520PE_spread_pct": 1.8416206261510129,
+          "OBEROIRLTY26NOV1520PE_ltp_deviation_pct": 4.24,
+          "OBEROIRLTY26NOV1480PE_age_s": 7.2,
+          "OBEROIRLTY26NOV1480PE_mid": 7.45,
+          "OBEROIRLTY26NOV1480PE_spread_pct": 2.684563758389262,
+          "OBEROIRLTY26NOV1480PE_ltp_deviation_pct": 0.0,
+          "OBEROIRLTY26NOV1680CE_age_s": 6.2,
+          "OBEROIRLTY26NOV1680CE_mid": 20.275,
+          "OBEROIRLTY26NOV1680CE_spread_pct": 2.7127003699136867,
+          "OBEROIRLTY26NOV1680CE_ltp_deviation_pct": 3.82,
+          "OBEROIRLTY26NOV1720CE_age_s": 6.2,
+          "OBEROIRLTY26NOV1720CE_mid": 12.025,
+          "OBEROIRLTY26NOV1720CE_spread_pct": 2.9106029106029108,
+          "OBEROIRLTY26NOV1720CE_ltp_deviation_pct": 1.04
+        }
+      },
+      {
+        "layer": "OrderGuard",
+        "passed": true,
+        "reason": "Order parameters valid",
+        "data": {
+          "OBEROIRLTY26NOV1520PE_price_check": "PASS",
+          "OBEROIRLTY26NOV1480PE_price_check": "PASS",
+          "OBEROIRLTY26NOV1680CE_price_check": "PASS",
+          "OBEROIRLTY26NOV1720CE_price_check": "PASS"
+        }
+      },
+      {
+        "layer": "PositionGuard",
+        "passed": true,
+        "reason": "Position state valid",
+        "data": {
+          "open_condors": 0,
+          "max_open_positions": 10
+        }
+      },
+      {
+        "layer": "CapitalGuard",
+        "passed": true,
+        "reason": "Capital checks passed",
+        "data": {
+          "estimated_margin": 53807.04,
+          "available_margin": 959345.81,
+          "total_allocated": 0,
+          "daily_pnl": 0.0,
+          "required_cash": 26903.52,
+          "projected_total": 53807.04
+        }
+      }
+    ],
+    "_line": 3979
+  },
+  {
+    "ts": "2026-10-29T11:59:25.181368+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SBIN",
+    "config": "SBIN",
+    "_line": 3980
+  },
+  {
+    "ts": "2026-10-29T11:59:25.380414+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "GUARD_PASS",
+    "symbol": "SBIN",
+    "passed": true,
+    "first_failure": null,
+    "layers": [
+      {
+        "layer": "InstrumentGuard",
+        "passed": true,
+        "reason": "All instruments valid",
+        "data": {
+          "SBIN26NOV920PE_dte": 25,
+          "SBIN26NOV920PE_strike_deviation_pct": 0.0,
+          "SBIN26NOV900PE_dte": 25,
+          "SBIN26NOV900PE_strike_deviation_pct": 0.0,
+          "SBIN26NOV1000CE_dte": 25,
+          "SBIN26NOV1000CE_strike_deviation_pct": 0.0,
+          "SBIN26NOV1020CE_dte": 25,
+          "SBIN26NOV1020CE_strike_deviation_pct": 0.0
+        }
+      },
+      {
+        "layer": "QuoteGuard",
+        "passed": true,
+        "reason": "All quotes valid",
+        "data": {
+          "SBIN26NOV920PE_age_s": 4.4,
+          "SBIN26NOV920PE_mid": 9.05,
+          "SBIN26NOV920PE_spread_pct": 1.1049723756906078,
+          "SBIN26NOV920PE_ltp_deviation_pct": 2.76,
+          "SBIN26NOV900PE_age_s": 4.4,
+          "SBIN26NOV900PE_mid": 5.3,
+          "SBIN26NOV900PE_spread_pct": 1.8867924528301887,
+          "SBIN26NOV900PE_ltp_deviation_pct": 0.0,
+          "SBIN26NOV1000CE_age_s": 4.4,
+          "SBIN26NOV1000CE_mid": 12.05,
+          "SBIN26NOV1000CE_spread_pct": 0.8298755186721992,
+          "SBIN26NOV1000CE_ltp_deviation_pct": 0.41,
+          "SBIN26NOV1020CE_age_s": 4.4,
+          "SBIN26NOV1020CE_mid": 7.175,
+          "SBIN26NOV1020CE_spread_pct": 0.6968641114982579,
+          "SBIN26NOV1020CE_ltp_deviation_pct": 1.05
+        }
+      },
+      {
+        "layer": "OrderGuard",
+        "passed": true,
+        "reason": "Order parameters valid",
+        "data": {
+          "SBIN26NOV920PE_price_check": "PASS",
+          "SBIN26NOV900PE_price_check": "PASS",
+          "SBIN26NOV1000CE_price_check": "PASS",
+          "SBIN26NOV1020CE_price_check": "PASS"
+        }
+      },
+      {
+        "layer": "PositionGuard",
+        "passed": true,
+        "reason": "Position state valid",
+        "data": {
+          "open_condors": 0,
+          "max_open_positions": 10
+        }
+      },
+      {
+        "layer": "CapitalGuard",
+        "passed": true,
+        "reason": "Capital checks passed",
+        "data": {
+          "estimated_margin": 17316.9,
+          "available_margin": 959345.81,
+          "total_allocated": 0,
+          "daily_pnl": 0.0,
+          "required_cash": 8658.45,
+          "projected_total": 17316.9
+        }
+      }
+    ],
+    "_line": 3981
+  },
+  {
+    "ts": "2026-10-29T11:59:25.380887+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "SBIN26NOV900PE",
+    "order_id": "0ffe4625-fb55-4aa1-9a13-707543e30a04",
+    "broker_order_id": null,
+    "side": "BUY",
+    "quantity": 750,
+    "limit_price": "5.35",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 3982
+  },
+  {
+    "ts": "2026-10-29T11:59:30.471361+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_CONFIRMED",
+    "symbol": "SBIN26NOV900PE",
+    "broker_order_id": "2115692462617325568",
+    "side": "BUY",
+    "fill_price": "5.35",
+    "quantity": 750,
+    "attempt": 1,
+    "_line": 3983
+  },
+  {
+    "ts": "2026-10-29T11:59:30.471675+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "SBIN26NOV1020CE",
+    "order_id": "043f71f5-5265-4547-9370-91625d658ea6",
+    "broker_order_id": null,
+    "side": "BUY",
+    "quantity": 750,
+    "limit_price": "7.20",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 3984
+  },
+  {
+    "ts": "2026-10-29T11:59:32.565567+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_CONFIRMED",
+    "symbol": "SBIN26NOV1020CE",
+    "broker_order_id": "2115692483978915840",
+    "side": "BUY",
+    "fill_price": "7.2",
+    "quantity": 750,
+    "attempt": 1,
+    "_line": 3985
+  },
+  {
+    "ts": "2026-10-29T11:59:33.566051+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "SBIN26NOV920PE",
+    "order_id": "b55bbeac-e8d0-4e8b-bbad-0a7fd6b6cc4e",
+    "broker_order_id": null,
+    "side": "SELL",
+    "quantity": 750,
+    "limit_price": "9.00",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 3986
+  },
+  {
+    "ts": "2026-10-29T11:59:35.662407+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_CONFIRMED",
+    "symbol": "SBIN26NOV920PE",
+    "broker_order_id": "2115692496972869632",
+    "side": "SELL",
+    "fill_price": "9.05",
+    "quantity": 750,
+    "attempt": 1,
+    "_line": 3987
+  },
+  {
+    "ts": "2026-10-29T11:59:35.662732+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "SBIN26NOV1000CE",
+    "order_id": "f78ce77c-714f-4667-8f61-dfd153267c09",
+    "broker_order_id": null,
+    "side": "SELL",
+    "quantity": 750,
+    "limit_price": "12.00",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 3988
+  },
+  {
+    "ts": "2026-10-29T11:59:37.752963+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_CONFIRMED",
+    "symbol": "SBIN26NOV1000CE",
+    "broker_order_id": "2115692505747353600",
+    "side": "SELL",
+    "fill_price": "12",
+    "quantity": 750,
+    "attempt": 1,
+    "_line": 3989
+  },
+  {
+    "ts": "2026-10-29T11:59:37.769415+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_SUCCESS",
+    "symbol": "SBIN",
+    "spot": 962.05,
+    "strikes": {
+      "short_put": 920.0,
+      "long_put": 900.0,
+      "short_call": 1000.0,
+      "long_call": 1020.0
+    },
+    "lots": 1,
+    "credit": 8.45,
+    "put_dist_pct": 4.0,
+    "call_dist_pct": 4.0,
+    "actual_put_dist_pct": 4.37,
+    "actual_call_dist_pct": 3.94,
+    "required_margin": 90192.19,
+    "cash_margin": 656789.21,
+    "stock_margin": 1261902.41,
+    "margin_source": "50_50_split",
+    "guard_passed": true,
+    "_line": 3990
+  },
+  {
+    "ts": "2026-10-29T11:59:37.770091+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SUNPHARMA",
+    "config": "SUNPHARMA",
+    "_line": 3991
+  },
+  {
+    "ts": "2026-10-29T11:59:37.985480+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "GUARD_FAIL",
+    "symbol": "SUNPHARMA",
+    "guard_report": {
+      "passed": false,
+      "first_failure": "QuoteGuard",
+      "layers": [
+        {
+          "layer": "InstrumentGuard",
+          "passed": true,
+          "reason": "All instruments valid",
+          "data": {
+            "SUNPHARMA26NOV1700PE_dte": 25,
+            "SUNPHARMA26NOV1700PE_strike_deviation_pct": 0.0,
+            "SUNPHARMA26NOV1660PE_dte": 25,
+            "SUNPHARMA26NOV1660PE_strike_deviation_pct": 0.0,
+            "SUNPHARMA26NOV1840CE_dte": 25,
+            "SUNPHARMA26NOV1840CE_strike_deviation_pct": 0.0,
+            "SUNPHARMA26NOV1860CE_dte": 25,
+            "SUNPHARMA26NOV1860CE_strike_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "QuoteGuard",
+          "passed": false,
+          "reason": "SUNPHARMA26NOV1840CE: quote age 15.0s > 10s",
+          "data": {
+            "SUNPHARMA26NOV1700PE_age_s": 5.0,
+            "SUNPHARMA26NOV1700PE_mid": 18.175,
+            "SUNPHARMA26NOV1700PE_spread_pct": 1.375515818431912,
+            "SUNPHARMA26NOV1700PE_ltp_deviation_pct": 1.24,
+            "SUNPHARMA26NOV1660PE_age_s": 5.0,
+            "SUNPHARMA26NOV1660PE_mid": 10.5,
+            "SUNPHARMA26NOV1660PE_spread_pct": 0.9523809523809523,
+            "SUNPHARMA26NOV1660PE_ltp_deviation_pct": 1.43,
+            "SUNPHARMA26NOV1840CE_age_s": 15.0,
+            "SUNPHARMA26NOV1860CE_age_s": 5.0,
+            "SUNPHARMA26NOV1860CE_mid": 13.05,
+            "SUNPHARMA26NOV1860CE_spread_pct": 1.5325670498084292,
+            "SUNPHARMA26NOV1860CE_ltp_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "OrderGuard",
+          "passed": true,
+          "reason": "Order parameters valid",
+          "data": {
+            "SUNPHARMA26NOV1700PE_price_check": "PASS",
+            "SUNPHARMA26NOV1660PE_price_check": "PASS",
+            "SUNPHARMA26NOV1840CE_price_check": "PASS",
+            "SUNPHARMA26NOV1860CE_price_check": "PASS"
+          }
+        },
+        {
+          "layer": "PositionGuard",
+          "passed": true,
+          "reason": "Position state valid",
+          "data": {
+            "open_condors": 1,
+            "max_open_positions": 10
+          }
+        },
+        {
+          "layer": "CapitalGuard",
+          "passed": true,
+          "reason": "Capital checks passed",
+          "data": {
+            "estimated_margin": 14817.6,
+            "available_margin": 946334.02,
+            "total_allocated": 90192.19,
+            "daily_pnl": 0.0,
+            "required_cash": 7408.8,
+            "projected_total": 105009.79
+          }
+        }
+      ]
+    },
+    "_line": 3992
+  },
+  {
+    "ts": "2026-10-29T11:59:37.986035+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "SUZLON",
+    "config": "SUZLON",
+    "_line": 3993
+  },
+  {
+    "ts": "2026-10-29T11:59:38.202311+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "GUARD_FAIL",
+    "symbol": "SUZLON",
+    "guard_report": {
+      "passed": false,
+      "first_failure": "OrderGuard",
+      "layers": [
+        {
+          "layer": "InstrumentGuard",
+          "passed": true,
+          "reason": "All instruments valid",
+          "data": {
+            "SUZLON26NOV35PE_dte": 25,
+            "SUZLON26NOV35PE_strike_deviation_pct": 0.0,
+            "SUZLON26NOV34PE_dte": 25,
+            "SUZLON26NOV34PE_strike_deviation_pct": 0.0,
+            "SUZLON26NOV39CE_dte": 25,
+            "SUZLON26NOV39CE_strike_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "QuoteGuard",
+          "passed": true,
+          "reason": "All quotes valid",
+          "data": {
+            "SUZLON26NOV35PE_age_s": 4.2,
+            "SUZLON26NOV35PE_mid": 1.04,
+            "SUZLON26NOV35PE_spread_pct": 1.9230769230769231,
+            "SUZLON26NOV35PE_ltp_deviation_pct": 0.96,
+            "SUZLON26NOV34PE_age_s": 6.2,
+            "SUZLON26NOV34PE_mid": 0.74,
+            "SUZLON26NOV34PE_spread_pct": 2.7027027027027026,
+            "SUZLON26NOV34PE_ltp_deviation_pct": 0.0,
+            "SUZLON26NOV39CE_age_s": 4.2,
+            "SUZLON26NOV39CE_mid": 0.98,
+            "SUZLON26NOV39CE_spread_pct": 2.0408163265306123,
+            "SUZLON26NOV39CE_ltp_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "OrderGuard",
+          "passed": false,
+          "reason": "SUZLON26NOV39CE: limit price 1.00 not within bid=0.97 / ask=0.99",
+          "data": {
+            "SUZLON26NOV35PE_price_check": "PASS",
+            "SUZLON26NOV34PE_price_check": "PASS",
+            "SUZLON26NOV39CE_price_check": "FAIL"
+          }
+        },
+        {
+          "layer": "PositionGuard",
+          "passed": true,
+          "reason": "Position state valid",
+          "data": {
+            "open_condors": 1,
+            "max_open_positions": 10
+          }
+        },
+        {
+          "layer": "CapitalGuard",
+          "passed": true,
+          "reason": "Capital checks passed",
+          "data": {
+            "estimated_margin": 22360.13,
+            "available_margin": 946334.02,
+            "total_allocated": 90192.19,
+            "daily_pnl": 0.0,
+            "required_cash": 11180.06,
+            "projected_total": 112552.32
+          }
+        }
+      ]
+    },
+    "_line": 3994
+  },
+  {
+    "ts": "2026-10-29T11:59:38.202769+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "TITAN",
+    "config": "TITAN",
+    "_line": 3995
+  },
+  {
+    "ts": "2026-10-29T11:59:38.425208+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "GUARD_PASS",
+    "symbol": "TITAN",
+    "passed": true,
+    "first_failure": null,
+    "layers": [
+      {
+        "layer": "InstrumentGuard",
+        "passed": true,
+        "reason": "All instruments valid",
+        "data": {
+          "TITAN26NOV4200PE_dte": 25,
+          "TITAN26NOV4200PE_strike_deviation_pct": 0.0,
+          "TITAN26NOV4100PE_dte": 25,
+          "TITAN26NOV4100PE_strike_deviation_pct": 0.0,
+          "TITAN26NOV4600CE_dte": 25,
+          "TITAN26NOV4600CE_strike_deviation_pct": 0.0,
+          "TITAN26NOV4700CE_dte": 25,
+          "TITAN26NOV4700CE_strike_deviation_pct": 0.0
+        }
+      },
+      {
+        "layer": "QuoteGuard",
+        "passed": true,
+        "reason": "All quotes valid",
+        "data": {
+          "TITAN26NOV4200PE_age_s": 1.4,
+          "TITAN26NOV4200PE_mid": 32.95,
+          "TITAN26NOV4200PE_spread_pct": 0.9104704097116844,
+          "TITAN26NOV4200PE_ltp_deviation_pct": 0.15,
+          "TITAN26NOV4100PE_age_s": 1.4,
+          "TITAN26NOV4100PE_mid": 17.775,
+          "TITAN26NOV4100PE_spread_pct": 0.8438818565400844,
+          "TITAN26NOV4100PE_ltp_deviation_pct": 0.42,
+          "TITAN26NOV4600CE_age_s": 1.4,
+          "TITAN26NOV4600CE_mid": 38.875,
+          "TITAN26NOV4600CE_spread_pct": 0.9003215434083601,
+          "TITAN26NOV4600CE_ltp_deviation_pct": 0.19,
+          "TITAN26NOV4700CE_age_s": 1.4,
+          "TITAN26NOV4700CE_mid": 20.55,
+          "TITAN26NOV4700CE_spread_pct": 0.48661800486618007,
+          "TITAN26NOV4700CE_ltp_deviation_pct": 0.49
+        }
+      },
+      {
+        "layer": "OrderGuard",
+        "passed": true,
+        "reason": "Order parameters valid",
+        "data": {
+          "TITAN26NOV4200PE_price_check": "PASS",
+          "TITAN26NOV4100PE_price_check": "PASS",
+          "TITAN26NOV4600CE_price_check": "PASS",
+          "TITAN26NOV4700CE_price_check": "PASS"
+        }
+      },
+      {
+        "layer": "PositionGuard",
+        "passed": true,
+        "reason": "Position state valid",
+        "data": {
+          "open_condors": 1,
+          "max_open_positions": 10
+        }
+      },
+      {
+        "layer": "CapitalGuard",
+        "passed": true,
+        "reason": "Capital checks passed",
+        "data": {
+          "estimated_margin": 55485.36,
+          "available_margin": 946334.02,
+          "total_allocated": 90192.19,
+          "daily_pnl": 0.0,
+          "required_cash": 27742.68,
+          "projected_total": 145677.55
+        }
+      }
+    ],
+    "_line": 3996
+  },
+  {
+    "ts": "2026-10-29T11:59:38.425742+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "ULTRACEMCO",
+    "config": "ULTRACEMCO",
+    "_line": 3997
+  },
+  {
+    "ts": "2026-10-29T11:59:41.633613+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "GUARD_PASS",
+    "symbol": "ULTRACEMCO",
+    "passed": true,
+    "first_failure": null,
+    "layers": [
+      {
+        "layer": "InstrumentGuard",
+        "passed": true,
+        "reason": "All instruments valid",
+        "data": {
+          "ULTRACEMCO26NOV10700PE_dte": 25,
+          "ULTRACEMCO26NOV10700PE_strike_deviation_pct": 0.0,
+          "ULTRACEMCO26NOV10500PE_dte": 25,
+          "ULTRACEMCO26NOV10500PE_strike_deviation_pct": 0.0,
+          "ULTRACEMCO26NOV11600CE_dte": 25,
+          "ULTRACEMCO26NOV11600CE_strike_deviation_pct": 0.0,
+          "ULTRACEMCO26NOV11800CE_dte": 25,
+          "ULTRACEMCO26NOV11800CE_strike_deviation_pct": 0.0
+        }
+      },
+      {
+        "layer": "QuoteGuard",
+        "passed": true,
+        "reason": "All quotes valid",
+        "data": {
+          "ULTRACEMCO26NOV10700PE_age_s": 4.6,
+          "ULTRACEMCO26NOV10700PE_mid": 85.625,
+          "ULTRACEMCO26NOV10700PE_spread_pct": 2.2773722627737225,
+          "ULTRACEMCO26NOV10700PE_ltp_deviation_pct": 2.25,
+          "ULTRACEMCO26NOV10500PE_age_s": 4.6,
+          "ULTRACEMCO26NOV10500PE_mid": 53.875,
+          "ULTRACEMCO26NOV10500PE_spread_pct": 1.948955916473318,
+          "ULTRACEMCO26NOV10500PE_ltp_deviation_pct": 1.25,
+          "ULTRACEMCO26NOV11600CE_age_s": 4.6,
+          "ULTRACEMCO26NOV11600CE_mid": 84.375,
+          "ULTRACEMCO26NOV11600CE_spread_pct": 2.074074074074074,
+          "ULTRACEMCO26NOV11600CE_ltp_deviation_pct": 0.15,
+          "ULTRACEMCO26NOV11800CE_age_s": 4.6,
+          "ULTRACEMCO26NOV11800CE_mid": 48.975,
+          "ULTRACEMCO26NOV11800CE_spread_pct": 1.9397651863195509,
+          "ULTRACEMCO26NOV11800CE_ltp_deviation_pct": 0.15
+        }
+      },
+      {
+        "layer": "OrderGuard",
+        "passed": true,
+        "reason": "Order parameters valid",
+        "data": {
+          "ULTRACEMCO26NOV10700PE_price_check": "PASS",
+          "ULTRACEMCO26NOV10500PE_price_check": "PASS",
+          "ULTRACEMCO26NOV11600CE_price_check": "PASS",
+          "ULTRACEMCO26NOV11800CE_price_check": "PASS"
+        }
+      },
+      {
+        "layer": "PositionGuard",
+        "passed": true,
+        "reason": "Position state valid",
+        "data": {
+          "open_condors": 1,
+          "max_open_positions": 10
+        }
+      },
+      {
+        "layer": "CapitalGuard",
+        "passed": true,
+        "reason": "Capital checks passed",
+        "data": {
+          "estimated_margin": 13358.4,
+          "available_margin": 946334.02,
+          "total_allocated": 90192.19,
+          "daily_pnl": 0.0,
+          "required_cash": 6679.2,
+          "projected_total": 103550.59
+        }
+      }
+    ],
+    "_line": 3998
+  },
+  {
+    "ts": "2026-10-29T11:59:41.634026+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "ULTRACEMCO26NOV10500PE",
+    "order_id": "95b9b511-02bb-4ea9-b1c1-3189a9d00be2",
+    "broker_order_id": null,
+    "side": "BUY",
+    "quantity": 50,
+    "limit_price": "54.40",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 3999
+  },
+  {
+    "ts": "2026-10-29T11:59:43.725043+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_CONFIRMED",
+    "symbol": "ULTRACEMCO26NOV10500PE",
+    "broker_order_id": "2115692530808315904",
+    "side": "BUY",
+    "fill_price": "54.4",
+    "quantity": 50,
+    "attempt": 1,
+    "_line": 4000
+  },
+  {
+    "ts": "2026-10-29T11:59:43.725341+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "ULTRACEMCO26NOV11800CE",
+    "order_id": "c0558590-bf2f-414f-97c2-cd85a2a16ac8",
+    "broker_order_id": null,
+    "side": "BUY",
+    "quantity": 50,
+    "limit_price": "49.45",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 4001
+  },
+  {
+    "ts": "2026-10-29T11:59:45.817764+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_CONFIRMED",
+    "symbol": "ULTRACEMCO26NOV11800CE",
+    "broker_order_id": "2115692539570221056",
+    "side": "BUY",
+    "fill_price": "49.4",
+    "quantity": 50,
+    "attempt": 1,
+    "_line": 4002
+  },
+  {
+    "ts": "2026-10-29T11:59:46.818364+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "ULTRACEMCO26NOV10700PE",
+    "order_id": "0dc97842-51f7-424e-8389-932c32165571",
+    "broker_order_id": null,
+    "side": "SELL",
+    "quantity": 50,
+    "limit_price": "84.65",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 4003
+  },
+  {
+    "ts": "2026-10-29T11:59:48.908590+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_CONFIRMED",
+    "symbol": "ULTRACEMCO26NOV10700PE",
+    "broker_order_id": "2115692552551587840",
+    "side": "SELL",
+    "fill_price": "84.65",
+    "quantity": 50,
+    "attempt": 1,
+    "_line": 4004
+  },
+  {
+    "ts": "2026-10-29T11:59:48.909004+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_PLACED",
+    "symbol": "ULTRACEMCO26NOV11600CE",
+    "order_id": "3d57941c-0a86-4fa4-b760-2fc2ff4b83b4",
+    "broker_order_id": null,
+    "side": "SELL",
+    "quantity": 50,
+    "limit_price": "83.50",
+    "status": "PENDING",
+    "filled_qty": 0,
+    "avg_fill": "",
+    "_line": 4005
+  },
+  {
+    "ts": "2026-10-29T11:59:51.002234+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ORDER_CONFIRMED",
+    "symbol": "ULTRACEMCO26NOV11600CE",
+    "broker_order_id": "2115692561317683200",
+    "side": "SELL",
+    "fill_price": "83.6",
+    "quantity": 50,
+    "attempt": 1,
+    "_line": 4006
+  },
+  {
+    "ts": "2026-10-29T11:59:51.017209+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_SUCCESS",
+    "symbol": "ULTRACEMCO",
+    "spot": 11132.0,
+    "strikes": {
+      "short_put": 10700.0,
+      "long_put": 10500.0,
+      "short_call": 11600.0,
+      "long_call": 11800.0
+    },
+    "lots": 1,
+    "credit": 64.3,
+    "put_dist_pct": 4.0,
+    "call_dist_pct": 4.0,
+    "actual_put_dist_pct": 3.88,
+    "actual_call_dist_pct": 4.2,
+    "required_margin": 69575.0,
+    "cash_margin": 630765.62,
+    "stock_margin": 1261902.41,
+    "margin_source": "50_50_split",
+    "guard_passed": true,
+    "_line": 4007
+  },
+  {
+    "ts": "2026-10-29T11:59:51.017755+05:30",
+    "level": "INFO",
+    "logger": "trade_logger",
+    "event_type": "ENTRY_ATTEMPT",
+    "symbol": "WAAREEENER",
+    "config": "WAAREEENER",
+    "_line": 4008
+  },
+  {
+    "ts": "2026-10-29T11:59:51.227287+05:30",
+    "level": "WARNING",
+    "logger": "trade_logger",
+    "event_type": "GUARD_FAIL",
+    "symbol": "WAAREEENER",
+    "guard_report": {
+      "passed": false,
+      "first_failure": "QuoteGuard",
+      "layers": [
+        {
+          "layer": "InstrumentGuard",
+          "passed": true,
+          "reason": "All instruments valid",
+          "data": {
+            "WAAREEENER26NOV2200PE_dte": 25,
+            "WAAREEENER26NOV2200PE_strike_deviation_pct": 0.0,
+            "WAAREEENER26NOV2160PE_dte": 25,
+            "WAAREEENER26NOV2160PE_strike_deviation_pct": 0.0,
+            "WAAREEENER26NOV2380CE_dte": 25,
+            "WAAREEENER26NOV2380CE_strike_deviation_pct": 0.0,
+            "WAAREEENER26NOV2440CE_dte": 25,
+            "WAAREEENER26NOV2440CE_strike_deviation_pct": 0.0
+          }
+        },
+        {
+          "layer": "QuoteGuard",
+          "passed": false,
+          "reason": "WAAREEENER26NOV2200PE: quote age 11.2s > 10s; WAAREEENER26NOV2160PE: quote age 27.2s > 10s; WAAREEENER26NOV2380CE: quote age 27.2s > 10s; WAAREEENER26NOV2440CE: quote age 27.2s > 10s",
+          "data": {
+            "WAAREEENER26NOV2200PE_age_s": 11.2,
+            "WAAREEENER26NOV2160PE_age_s": 27.2,
+            "WAAREEENER26NOV2380CE_age_s": 27.2,
+            "WAAREEENER26NOV2440CE_age_s": 27.2
+          }
+        },
+        {
+          "layer": "OrderGuard",
+          "passed": true,
+          "reason": "Order parameters valid",
+          "data": {
+            "WAAREEENER26NOV2200PE_price_check": "PASS",
+            "WAAREEENER26NOV2160PE_price_check": "PASS",
+            "WAAREEENER26NOV2380CE_price_check": "PASS",
+            "WAAREEENER26NOV2440CE_price_check": "PASS"
+          }
+        },
+        {
+          "layer": "PositionGuard",
+          "passed": true,
+          "reason": "Position state valid",
+          "data": {
+            "open_condors": 2,
+            "max_open_positions": 10
+          }
+        },
+        {
+          "layer": "CapitalGuard",
+          "passed": true,
+          "reason": "Capital checks passed",
+          "data": {
+            "estimated_margin": 9628.5,
+            "available_margin": 935959.85,
+            "total_allocated": 159767.19,
+            "daily_pnl": 0.0,
+            "required_cash": 4814.25,
+            "projected_total": 169395.69
+          }
+        }
+      ]
+    },
+    "_line": 4009
+  }
+]

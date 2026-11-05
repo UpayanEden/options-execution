@@ -18,17 +18,12 @@ import pytest
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 
-def _make_config(profit_target_pct: float = 85.0, min_entry_premium_pct: float = 25.0):
+def _make_config(profit_target_pct: float = 85.0):
     """Return a minimal LiveConfig mock with the strategy fields we test."""
     cfg = MagicMock()
     cfg.strategy.profit_target_pct = profit_target_pct
-    cfg.strategy.min_entry_premium_pct = min_entry_premium_pct
     cfg.strategy.shift_trigger_pct = 1.0
-    cfg.strategy.dte_exit = 2
-    cfg.strategy.near_expiry_days = 10
-    cfg.strategy.near_expiry_dist_reduction = 0.40
     cfg.strategy.spot_missing_alert_cycles = 4
-    cfg.strategy.allow_dte_exit_during_ban = True
     return cfg
 
 
@@ -208,35 +203,27 @@ def test_profit_target_skipped_when_options_cache_none():
 
 def test_min_premium_pct_blocks_entry_when_too_low():
     """
-    Test the premium filter logic directly: net_credit=2.0, spread_width=20 → 10% < 25% → blocks.
-    We test the filter condition, not the full condor_runner flow.
+    Test the per-stock premium gate directly: net_credit=2.0, spread_width=20 → 10% < 25% → blocks.
+    stock.premium_pct is a 0–1 fraction (0.25 = 25% of spread width required).
     """
-    min_prem_pct_threshold = 25.0
+    target_prem = 0.25   # stock.premium_pct
     spread_width = 20.0
-    net_credit = 2.0
+    net_credit = 2.0     # 10% of spread — below target
 
-    premium_pct = net_credit / spread_width * 100  # = 10%
-    min_prem_pct = min_prem_pct_threshold / 100.0
-
-    # The condition that triggers the block:
-    should_block = spread_width > 0 and (net_credit / spread_width) < min_prem_pct
-    assert should_block, f"Expected block: {premium_pct:.1f}% < {min_prem_pct_threshold}%"
+    should_block = spread_width > 0 and (net_credit / spread_width) < target_prem
+    assert should_block, f"Expected block: {net_credit/spread_width*100:.1f}% < {target_prem*100:.1f}%"
 
 
 def test_min_premium_pct_allows_entry_when_sufficient():
     """
-    Test the premium filter logic directly: net_credit=5.5, spread_width=20 → 27.5% ≥ 25% → allows.
+    Test the per-stock premium gate directly: net_credit=5.5, spread_width=20 → 27.5% ≥ 25% → allows.
     """
-    min_prem_pct_threshold = 25.0
+    target_prem = 0.25   # stock.premium_pct
     spread_width = 20.0
-    net_credit = 5.5
+    net_credit = 5.5     # 27.5% of spread — above target
 
-    premium_pct = net_credit / spread_width * 100  # = 27.5%
-    min_prem_pct = min_prem_pct_threshold / 100.0
-
-    # The condition that triggers the block should be False:
-    should_block = spread_width > 0 and (net_credit / spread_width) < min_prem_pct
-    assert not should_block, f"Expected no block: {premium_pct:.1f}% ≥ {min_prem_pct_threshold}%"
+    should_block = spread_width > 0 and (net_credit / spread_width) < target_prem
+    assert not should_block, f"Expected no block: {net_credit/spread_width*100:.1f}% ≥ {target_prem*100:.1f}%"
 
 
 def test_min_premium_filter_in_condor_runner(tmp_path):
@@ -259,9 +246,6 @@ def test_min_premium_filter_in_condor_runner(tmp_path):
     cfg.strategy.entry_start = "09:00"
     cfg.strategy.entry_end   = "15:00"
     cfg.strategy.wing_width_pct = 2.0
-    cfg.strategy.min_entry_premium_pct = 25.0
-    cfg.strategy.exit_gate_pct = 0.05
-    cfg.strategy.min_shifts_before_exit_gate = 2
     cfg.strategy.default_lots = 0
     cfg.capital.max_open_positions = 10
     cfg.enabled_stocks = []
@@ -325,6 +309,7 @@ def test_min_premium_filter_in_condor_runner(tmp_path):
     stock.symbol = "TEST"
     stock.put_dist_pct = 5.0
     stock.call_dist_pct = 5.0
+    stock.premium_pct = 0.25  # require 25% of spread width — net_credit=2.0/width=20 → 10% fails
     stock.lots = 0
     stock.expiry_type = "monthly"
 

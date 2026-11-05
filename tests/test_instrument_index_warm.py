@@ -102,7 +102,6 @@ class TestRunSessionWarmsIndex:
             stocks=[StockConfig("COALINDIA", 3.0, 3.0, 0.4, enabled=True, expiry_type="monthly")],
             strategy=StrategyParams(
                 3.0, 2.0, 15, 45, "09:30", "23:59",
-                min_entry_premium_pct=0.0, min_shift_edge=-9999.0,
             ),
             zerodha_api_key="t", zerodha_api_secret="t", zerodha_access_token="t",
             mode="paper",

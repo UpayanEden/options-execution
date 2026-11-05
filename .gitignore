@@ -30,3 +30,6 @@ __pycache__/
 .idea/
 *.swp
 *.swo
+
+# Deploy scripts (contain credentials — never commit)
+scripts/

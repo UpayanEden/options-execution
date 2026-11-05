@@ -20,7 +20,7 @@ import time
 from decimal import Decimal
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from execution.models import Order, Side
+from execution.models import Order
 from live.trade_logger import EventType, TradeLogger
 
 logger = logging.getLogger(__name__)
@@ -117,23 +117,26 @@ def place_and_confirm_shift_leg(
     poller: SharedOrderPoller,
     cutoff_time_str: str,
     get_now_str_fn: Callable[[], str],
+    price_refresher: Optional[Callable[[], Optional[Decimal]]] = None,
 ) -> Tuple[Optional[str], int]:
     """
     Place a single shift leg order and confirm its fill using SharedOrderPoller.
 
-    Implements progressive price stepping: if no fill after fill_step_after_s,
-    modify limit price one step. Stop after max_price_modifications or if
-    cumulative price move exceeds max_slippage_pct% of initial limit.
+    If the order is not filled within shift_order_timeout_s seconds, cancel it and
+    re-place at a fresh market price obtained via price_refresher. Loop until filled
+    or the time cutoff is reached.
 
     Args:
         broker:           BrokerAdapter with place_order_from_model() and cancel_order().
         order:            The Order model to place.
         trade_logger:     TradeLogger for structured event logging.
-        config:           StrategyParams with fill_poll_interval_s, fill_step_after_s,
-                          max_price_modifications, max_slippage_pct.
+        config:           StrategyParams with fill_poll_interval_s, shift_order_timeout_s.
         poller:           SharedOrderPoller instance (shared across shift legs).
         cutoff_time_str:  HH:MM time cutoff — cancel and return if now >= this.
         get_now_str_fn:   Callable returning current IST time as "HH:MM".
+        price_refresher:  Optional callable returning a fresh Decimal limit price.
+                          Called on timeout to re-place at market. If None, timeout
+                          results in a hard failure.
 
     Returns:
         Tuple (broker_oid, filled_qty).
@@ -141,13 +144,8 @@ def place_and_confirm_shift_leg(
         filled_qty is 0 on timeout/cancel, or partial fill count on partial.
     """
     fill_poll_interval_s = float(getattr(config, "fill_poll_interval_s", 0.5))
-    fill_step_after_s = float(getattr(config, "fill_step_after_s", 3.0))
-    max_price_modifications = int(getattr(config, "max_price_modifications", 5))
-    max_slippage_pct = float(getattr(config, "max_slippage_pct", 5.0))
+    order_timeout_s = float(getattr(config, "shift_order_timeout_s", 2.0))
 
-    initial_limit = order.limit_price
-    tick_size = Decimal("0.05")
-    max_slippage_amount = initial_limit * Decimal(str(max_slippage_pct / 100.0))
     current_order = order
 
     # Check cutoff before placing
@@ -192,10 +190,9 @@ def place_and_confirm_shift_leg(
             "limit_price": str(order.limit_price),
         },
     )
-    poller.register(broker_oid, current_order, initial_limit)
+    poller.register(broker_oid, current_order, current_order.limit_price)
 
-    step_deadline = time.time() + fill_step_after_s
-    modifications = 0
+    deadline = time.time() + order_timeout_s
 
     while True:
         # Cutoff check
@@ -238,76 +235,72 @@ def place_and_confirm_shift_leg(
                     level="WARNING",
                 )
                 poller.unregister(broker_oid)
-                # Partial fill — return what was filled
                 if filled_qty > 0:
                     return broker_oid, filled_qty
                 return None, 0
 
         time.sleep(fill_poll_interval_s)
 
-        # Check if we should step the price
-        if time.time() >= step_deadline and modifications < max_price_modifications:
-            # Compute step size
-            step = tick_size  # minimum step
-            if hasattr(current_order, "initial_ask") and hasattr(current_order, "initial_bid"):
-                ask = getattr(current_order, "initial_ask", None)
-                bid = getattr(current_order, "initial_bid", None)
-                if ask and bid and ask > bid:
-                    computed_step = Decimal("0.25") * (ask - bid)
-                    step = max(tick_size, computed_step)
-
-            if current_order.side == Side.BUY:
-                new_price = current_order.limit_price + step
-                # Never exceed max_slippage_pct from initial
-                max_allowed = initial_limit + max_slippage_amount
-                if new_price > max_allowed:
-                    new_price = max_allowed
-            else:
-                new_price = current_order.limit_price - step
-                # Round down, never below tick
-                new_price = max(new_price, tick_size)
-                # Never slip more than max_slippage_pct below initial
-                min_allowed = initial_limit - max_slippage_amount
-                if new_price < min_allowed:
-                    new_price = min_allowed
-
-            new_price = (new_price / tick_size).quantize(Decimal("1")) * tick_size
-            if new_price != current_order.limit_price:
-                try:
-                    if hasattr(broker, "modify_order"):
-                        broker.modify_order(  # type: ignore[attr-defined]
-                            order_id=broker_oid,
-                            price=float(new_price),
-                        )
-                        modifications += 1
-                        current_order = current_order.model_copy(update={"limit_price": new_price})
-                        logger.info("shift_leg_price_stepped", extra={
-                            "symbol": order.trading_symbol,
-                            "broker_oid": broker_oid,
-                            "new_price": str(new_price),
-                            "modification_no": modifications,
-                        })
-                except Exception as exc:
-                    logger.warning("shift_leg_modify_failed", extra={
-                        "symbol": order.trading_symbol, "error": str(exc)
-                    })
-
-            step_deadline = time.time() + fill_step_after_s
-
-        # After exhausting all modifications, cancel and return partial if any
-        if modifications >= max_price_modifications:
-            logger.warning("shift_leg_max_modifications_reached", extra={
-                "symbol": order.trading_symbol, "broker_oid": broker_oid
-            })
+        # Timeout: cancel and re-place at fresh price
+        if time.time() >= deadline:
             _cancel_order(broker, broker_oid, order.trading_symbol)
             poller.unregister(broker_oid)
-            # Check one final time for any partial fill
-            results = poller.poll_once(0)
-            info = results.get(broker_oid, ("", 0, Decimal("0")))
-            _, partial_qty, _ = info
-            if partial_qty > 0:
-                return broker_oid, partial_qty
-            return None, 0
+
+            if price_refresher is None:
+                logger.warning("shift_leg_timeout_no_refresher", extra={
+                    "symbol": order.trading_symbol, "broker_oid": broker_oid
+                })
+                return None, 0
+
+            if get_now_str_fn() >= cutoff_time_str:
+                return None, 0
+
+            new_price = price_refresher()
+            if new_price is None:
+                logger.warning("shift_leg_refresh_price_failed", extra={
+                    "symbol": order.trading_symbol
+                })
+                return None, 0
+
+            logger.info("shift_leg_replace_fresh_price", extra={
+                "symbol": order.trading_symbol,
+                "old_price": str(current_order.limit_price),
+                "new_price": str(new_price),
+            })
+            current_order = current_order.model_copy(update={"limit_price": new_price})
+
+            # Place new order at fresh price
+            try:
+                if hasattr(broker, "place_order_from_model"):
+                    broker_oid = str(broker.place_order_from_model(current_order))  # type: ignore[attr-defined]
+                else:
+                    broker_oid = str(broker.place_order(  # type: ignore[attr-defined]
+                        trading_symbol=current_order.trading_symbol,
+                        exchange="NFO",
+                        transaction_type=current_order.side.value,
+                        quantity=current_order.quantity,
+                        price=current_order.limit_price,
+                        product="NRML",
+                    ))
+            except Exception as exc:
+                logger.error("shift_leg_replace_failed", extra={
+                    "symbol": order.trading_symbol, "error": str(exc)
+                })
+                return None, 0
+
+            trade_logger.log(
+                EventType.ORDER_PLACED,
+                order.trading_symbol,
+                {
+                    "broker_order_id": broker_oid,
+                    "side": order.side.value,
+                    "quantity": current_order.quantity,
+                    "limit_price": str(new_price),
+                    "phase": "replace_fresh_price",
+                },
+            )
+            poller.register(broker_oid, current_order, new_price)
+            deadline = time.time() + order_timeout_s
 
 
 def _cancel_order(broker: Any, broker_oid: str, symbol: str) -> None:

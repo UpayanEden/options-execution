@@ -59,7 +59,9 @@ class StockConfig:
     """Distance of short call from spot as a percentage of spot price."""
 
     premium_pct: float
-    """Take-profit threshold: close when current cost <= (1 - premium_pct) × initial_credit."""
+    """Entry premium gate and take-profit threshold (0–1 fraction of spread width).
+    Entry: position is only entered when net_credit / spread_width >= premium_pct.
+    Take-profit: position is closed when remaining cost <= (1 - premium_pct) × initial_credit."""
 
     lots: int = 0
     """Fixed number of lots to trade. 0 = auto-size from available capital."""
@@ -102,12 +104,6 @@ class StrategyParams:
     dte_exit: int = 2
     """Close positions when days-to-expiry reaches this threshold (default: 2 days before expiry)."""
 
-    near_expiry_days: int = 10
-    """DTE threshold below which tighter shift distances are used."""
-
-    near_expiry_dist_reduction: float = 0.40
-    """Fractional reduction in shift distances when DTE <= near_expiry_days (e.g. 0.40 = 40% tighter)."""
-
     trend_adx_min: float = 20.0
     """Minimum ADX(14) value for trend gate to be active. Below this → NEUTRAL."""
 
@@ -117,20 +113,8 @@ class StrategyParams:
     fill_poll_interval_s: float = 0.5
     """Seconds between each order fill status poll for shift legs."""
 
-    fill_step_after_s: float = 3.0
-    """Seconds without fill before price is stepped one tick more aggressive."""
-
-    max_price_modifications: int = 5
-    """Maximum number of limit price modifications before abandoning an order."""
-
-    max_slippage_pct: float = 5.0
-    """Maximum allowable slippage from initial limit price as a percentage."""
-
-    min_shifts_before_exit_gate: int = 2
-    """Minimum shift count before exit-instead-of-shift gate is evaluated."""
-
-    exit_gate_pct: float = 0.05
-    """Exit gate: exit instead of shift when projected_credit <= this fraction of original_credit."""
+    shift_order_timeout_s: float = 2.0
+    """Seconds to wait for a shift leg fill before cancelling and re-placing at fresh market price."""
 
     spot_missing_alert_cycles: int = 4
     """Number of consecutive spot-missing cycles before sending an alert."""
@@ -158,13 +142,6 @@ class StrategyParams:
     entry_completion_buffer_min: int = 20
     """Minutes required to complete an entry after it starts. No new entries will be
     initiated if now + buffer > effective_cutoff (min of entry_end and 15:15 IST)."""
-
-    min_shift_edge: float = 0.50
-    """Minimum net credit (INR per share) required from the new spread leg when shifting.
-    If new_short.bid - new_long.ask < min_shift_edge the shift is aborted (uneconomical)."""
-
-    min_entry_premium_pct: float = 25.0
-    """Minimum net credit as % of spread width required at entry. Entries with lower premium are skipped."""
 
     allow_reentry: bool = False
     """Allow re-entering the same symbol+expiry after an exit within the same session.
@@ -305,16 +282,10 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
         entry_end=str(strat_raw.get("entry_end", "14:00")),
         default_lots=int(strat_raw.get("default_lots", 0)),
         dte_exit=int(strat_raw.get("dte_exit", 2)),
-        near_expiry_days=int(strat_raw.get("near_expiry_days", 10)),
-        near_expiry_dist_reduction=float(strat_raw.get("near_expiry_dist_reduction", 0.40)),
         trend_adx_min=float(strat_raw.get("trend_adx_min", 20.0)),
         trend_dist_boost=float(strat_raw.get("trend_dist_boost", 0.10)),
         fill_poll_interval_s=float(strat_raw.get("fill_poll_interval_s", 0.5)),
-        fill_step_after_s=float(strat_raw.get("fill_step_after_s", 3.0)),
-        max_price_modifications=int(strat_raw.get("max_price_modifications", 5)),
-        max_slippage_pct=float(strat_raw.get("max_slippage_pct", 5.0)),
-        min_shifts_before_exit_gate=int(strat_raw.get("min_shifts_before_exit_gate", 2)),
-        exit_gate_pct=float(strat_raw.get("exit_gate_pct", 0.05)),
+        shift_order_timeout_s=float(strat_raw.get("shift_order_timeout_s", 2.0)),
         spot_missing_alert_cycles=int(strat_raw.get("spot_missing_alert_cycles", 4)),
         allow_dte_exit_during_ban=bool(strat_raw.get("allow_dte_exit_during_ban", True)),
         profit_target_pct=float(strat_raw.get("profit_target_pct", 85.0)),
@@ -323,8 +294,6 @@ def load_config(config_path: Optional[Path] = None) -> LiveConfig:
         stop_loss_confirm_checks=int(strat_raw.get("stop_loss_confirm_checks", 2)),
         max_daily_loss_inr=_opt_float(strat_raw.get("max_daily_loss_inr")),
         entry_completion_buffer_min=int(strat_raw.get("entry_completion_buffer_min", 20)),
-        min_shift_edge=float(strat_raw.get("min_shift_edge", 0.50)),
-        min_entry_premium_pct=float(strat_raw.get("min_entry_premium_pct", 25.0)),
         allow_reentry=bool(strat_raw.get("allow_reentry", False)),
         max_fo_ban_suspension_cycles=int(strat_raw.get("max_fo_ban_suspension_cycles", 2)),
     )

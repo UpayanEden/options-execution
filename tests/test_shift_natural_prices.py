@@ -1,11 +1,10 @@
 """
-Tests for Task 6: shift projections use natural prices.
+Tests for shift projections using natural prices.
 
 Changes:
   - new_short_price = q_ns.bid  (we SELL at bid — conservative receive)
   - new_long_price  = q_nl.ask  (we BUY at ask — conservative pay)
   - new_side_credit_estimated = bid(new_short) - ask(new_long)
-  - min_shift_edge (default 0.50): abort shift if new side credit < min_shift_edge
 
 These tests verify the formula logic directly (pure unit tests, no broker).
 """
@@ -61,39 +60,6 @@ class TestNaturalPriceFormula:
         """
         natural = _natural_side_credit(short_bid=4.0, long_ask=5.0)
         assert natural < 0
-
-
-# ── min_shift_edge guard ──────────────────────────────────────────────────────
-
-
-class TestMinShiftEdge:
-
-    def _check_edge(
-        self, short_bid: float, long_ask: float, min_edge: float = 0.50
-    ) -> bool:
-        """Return True if shift should be aborted due to insufficient edge."""
-        natural = _natural_side_credit(short_bid=short_bid, long_ask=long_ask)
-        return natural < min_edge
-
-    def test_below_min_edge_aborts(self):
-        """0.40 < 0.50 → abort."""
-        assert self._check_edge(short_bid=5.40, long_ask=5.00) is True
-
-    def test_exactly_at_min_edge_allows(self):
-        """0.50 == 0.50 → allow (not strictly below)."""
-        assert self._check_edge(short_bid=5.50, long_ask=5.00) is False
-
-    def test_above_min_edge_allows(self):
-        """2.0 > 0.50 → allow."""
-        assert self._check_edge(short_bid=7.0, long_ask=5.0) is False
-
-    def test_negative_credit_aborts_with_default_edge(self):
-        """Negative natural credit (-0.50) < 0.50 → abort."""
-        assert self._check_edge(short_bid=4.50, long_ask=5.0) is True
-
-    def test_zero_min_edge_disables_guard(self):
-        """min_edge=0.0: even slightly negative credit is allowed (-9999 would be too)."""
-        assert self._check_edge(short_bid=5.00, long_ask=5.01, min_edge=0.0) is False
 
 
 # ── Tick rounding ─────────────────────────────────────────────────────────────

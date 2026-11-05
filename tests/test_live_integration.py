@@ -257,7 +257,7 @@ def _make_live_config() -> LiveConfig:
                 symbol="RELIANCE",
                 put_dist_pct=4.0,
                 call_dist_pct=4.0,
-                premium_pct=0.4,
+                premium_pct=0.0,  # disable per-stock entry premium gate in integration tests
                 enabled=True,
                 expiry_type="weekly",  # test instruments use today+30d which isn't a monthly expiry
             )
@@ -269,8 +269,6 @@ def _make_live_config() -> LiveConfig:
             max_dte=45,
             entry_start="00:00",
             entry_end="23:59",
-            min_entry_premium_pct=0.0,   # disable premium filter in integration tests
-            min_shift_edge=-9999.0,      # disable min_shift_edge guard (PaperBroker has backwards pricing)
         ),
         zerodha_api_key="test",
         zerodha_api_secret="test",
@@ -624,27 +622,6 @@ class TestShiftMonitorTriggers:
         should_act, reason = monitor._check_position(pos)
         assert should_act, f"Should trigger SHIFT_CALL at spot={spot}"
         assert "SHIFT_CALL" in reason
-
-    def test_dte_exit_triggers_near_expiry(self, tmp_path):
-        """DTE_EXIT should fire when position is within dte_exit days of expiry."""
-        config = _make_live_config()
-        broker = PaperBroker(spot=2800.0)
-        tl = TradeLogger(log_dir=str(tmp_path), symbol="RELIANCE")
-        monitor = ShiftMonitor(
-            broker=broker,
-            positions=[],
-            config=config,
-            logger_=tl,
-            on_shift_cb=MagicMock(),
-        )
-        # Build a position expiring in 1 day (below dte_exit threshold of 2)
-        pos = self._make_position(2800.0)
-        # Override expiry to be imminent
-        pos.expiry = date.today() + timedelta(days=1)
-
-        should_act, reason = monitor._check_position(pos)
-        assert should_act, f"DTE_EXIT should fire for expiry in 1 day. Reason: {reason}"
-        assert "DTE_EXIT" in reason
 
 
 # ── Capital manager tests ──────────────────────────────────────────────────

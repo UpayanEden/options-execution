@@ -16,7 +16,7 @@ capital:
 
 # ── Strategy parameters (shared across all stocks) ─────────────────────────
 strategy:
-  shift_trigger_pct: 1.0    # Trigger shift when spot moves 1% past short strike
+  shift_trigger_pct: 1.0    # Trigger shift when spot is within 1% of current spot price
   wing_width_pct: 2.0       # Wing width = 2% of spot (long - short distance)
   min_dte: 18               # Minimum days to expiry at entry
   max_dte: 50               # Maximum days to expiry at entry
@@ -25,32 +25,21 @@ strategy:
   default_lots: 0           # Lots per trade for all stocks (0 = auto-size from capital)
   dte_exit: 2               # Force-close positions when DTE ≤ this (2 = 2 days before expiry)
 
-  # ── Near-expiry distance tightening (Section 1) ─────────────────────────
-  near_expiry_days: 10               # DTE threshold: use tighter distances below this
-  near_expiry_dist_reduction: 0.40   # Reduce distances by 40% when DTE <= near_expiry_days
-
-  # ── Trend-aware distance boost (Section 2) ──────────────────────────────
+  # ── Trend classifier (used for logging only) ────────────────────────────
   trend_adx_min: 20.0        # Minimum ADX for trend gate to pass; below → NEUTRAL
-  trend_dist_boost: 0.10     # Boost shift distance by 10% when trend aligns with trigger side
+  trend_dist_boost: 0.10     # (kept for trend_classifier; no longer applied to distances)
 
-  # ── Faster fill polling (Section 3) ─────────────────────────────────────
+  # ── Fill polling and order timeout ──────────────────────────────────────
   fill_poll_interval_s: 0.5  # Seconds between order status polls for shift legs
-  fill_step_after_s: 3.0     # Seconds without fill before stepping limit price
-  max_price_modifications: 5 # Max price steps before abandoning order
-  max_slippage_pct: 5.0      # Max % slippage from initial limit price allowed
+  shift_order_timeout_s: 2.0   # cancel and re-place shift leg if not filled within 2 s
 
-  # ── Exit-instead-of-shift gate (Section 4) ──────────────────────────────
-  min_shifts_before_exit_gate: 2  # Minimum shifts before exit gate is evaluated
-  exit_gate_pct: 0.05             # Exit if projected_credit <= 5% of original_credit
-
-  # ── Spot missing alerts (Section 6) ─────────────────────────────────────
+  # ── Spot missing alerts ──────────────────────────────────────────────────
   spot_missing_alert_cycles: 4    # Alert after this many consecutive missing-spot cycles
 
   # ── F&O ban behaviour (Section 7) ───────────────────────────────────────
   allow_dte_exit_during_ban: true  # Allow DTE-triggered exit even if symbol is on ban list
 
   profit_target_pct: 85.0        # exit when 85% of net premium captured
-  min_entry_premium_pct: 25.0    # minimum premium/width ratio at entry (%)
 
   # ── Stop-loss controls ───────────────────────────────────────────────────
   stop_loss_credit_multiple:     # exit when loss >= N× entry credit (e.g. 2.0); null = disabled
@@ -62,7 +51,6 @@ strategy:
 
   # ── Entry controls ───────────────────────────────────────────────────────
   entry_completion_buffer_min: 20  # don't start new entries within N min of cutoff
-  min_shift_edge: 0.50             # minimum net credit (₹/share) for a shift to be viable
 
   # ── Re-entry and F&O ban ─────────────────────────────────────────────────
   allow_reentry: false             # allow re-entering same symbol+expiry after an exit
@@ -83,7 +71,9 @@ zerodha:
 # ── Per-stock configurations ─────────────────────────────────────────────────
 # put_dist_pct:  Short put distance from spot as % of spot price
 # call_dist_pct: Short call distance from spot as % of spot price
-# premium_pct:   Take-profit: close when remaining cost <= (1 - premium_pct) × initial_credit
+# premium_pct:   Entry gate AND take-profit (0–1 fraction of spread width).
+#                Entry: only enter when net_credit / spread_width >= premium_pct (keeps retrying all day).
+#                Take-profit: close when remaining cost <= (1 - premium_pct) × initial_credit.
 # enabled:       Set to false to exclude stock from session entries
 # expiry_type:   'monthly' = last Thursday of month (default for all stocks)
 #                'weekly'  = nearest Thursday in DTE window (for indices like NIFTY)

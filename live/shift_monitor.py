@@ -49,8 +49,9 @@ _RECON_CYCLE_COUNT = 10
 
 class ShiftMonitor:
     """
-    Daemon thread that watches live condor positions and fires callbacks
-    when a shift or take-profit condition is detected.
+    Daemon thread that watches live condor positions and fires shift callbacks
+    when a short strike comes within shift_trigger_pct% of the spot price, or
+    an exit callback when 85% of the original credit has been captured.
 
     The monitor checks the kill switch at the top of every iteration.
     On kill switch activation it stops itself immediately.
@@ -106,9 +107,6 @@ class ShiftMonitor:
         self._ban_hold_logged: set = set()
         # Periodic reconciliation cycle counter (Section 5)
         self._recon_cycle: int = 0
-        # Per-position consecutive stop-loss breach counters (Task 4)
-        # Key: position id (id(pos)) → consecutive breach count
-        self._sl_breach_count: Dict[int, int] = {}
         logger.info("shift_monitor_created")
 
     # ── Public control API ─────────────────────────────────────────────────
@@ -363,7 +361,7 @@ class ShiftMonitor:
                 logger.debug("position_ok", extra={"symbol": symbol})
                 return
 
-            if action in ("DATA_UNAVAILABLE", "BAN_HOLD", "BAN_HOLD_DTE_WARN", "NEEDS_RECON"):
+            if action in ("DATA_UNAVAILABLE", "BAN_HOLD", "NEEDS_RECON"):
                 # Nothing to do — logged inside _check_position
                 return
 
@@ -371,18 +369,6 @@ class ShiftMonitor:
                 trigger_side = "PUT" if "PUT" in action else "CALL"
                 logger.warning("shift_triggered", extra={"symbol": symbol, "reason": reason, "side": trigger_side})
                 self._on_shift_cb(pos, trigger_side)
-            elif action == "DTE_EXIT":
-                logger.warning("dte_exit_triggered_by_monitor",
-                               extra={"symbol": symbol, "reason": reason})
-                if self._on_exit_cb is not None:
-                    self._on_exit_cb(pos, "DTE_EXIT")
-                else:
-                    self._trade_logger.log(
-                        EventType.SHIFT_TRIGGERED,
-                        symbol,
-                        {"reason": reason, "action": "exit_cb_not_set"},
-                        level="WARNING",
-                    )
             elif action == "PROFIT_TARGET_EXIT":
                 logger.warning("profit_target_exit_triggered",
                                extra={"symbol": symbol, "reason": reason})
@@ -420,11 +406,10 @@ class ShiftMonitor:
 
         Checks in priority order:
           0. NEEDS_RECON state → return immediately.
-          1. F&O ban list check → BAN_HOLD (DTE exit may still fire if configured).
-          2. DTE_EXIT: expiry within dte_exit days → trigger exit.
-          3. Spot missing check → DATA_UNAVAILABLE with logging.
-          3b. PROFIT_TARGET_EXIT: 85% of original credit captured.
-          4. SHIFT_PUT / SHIFT_CALL: spot within trigger zone.
+          1. F&O ban list check → BAN_HOLD (shift skipped; orders would be rejected anyway).
+          2. Spot missing check → DATA_UNAVAILABLE with logging.
+          3. PROFIT_TARGET_EXIT: 85% of original credit captured → trigger exit.
+          4. SHIFT_PUT / SHIFT_CALL: spot within trigger zone (shift_trigger_pct%).
 
         Args:
             pos:            CondorPosition dataclass.
@@ -434,10 +419,9 @@ class ShiftMonitor:
 
         Returns:
             Tuple (action: str, reason: str).
-            action is one of: "SHIFT_PUT", "SHIFT_CALL", "DTE_EXIT", "PROFIT_TARGET_EXIT",
-            "DATA_UNAVAILABLE", "NEEDS_RECON", "BAN_HOLD", "BAN_HOLD_DTE_WARN", or "".
+            action is one of: "SHIFT_PUT", "SHIFT_CALL", "PROFIT_TARGET_EXIT",
+            "DATA_UNAVAILABLE", "NEEDS_RECON", "BAN_HOLD", or "".
         """
-        from datetime import date as _date
         symbol: str = getattr(pos, "symbol", "UNKNOWN")
 
         # ── 0. NEEDS_RECON short-circuit ──────────────────────────────────
@@ -460,26 +444,6 @@ class ShiftMonitor:
                     {"reason": "symbol_on_fno_ban_list"},
                     level="WARNING",
                 )
-            # Check if DTE exit should still fire during ban
-            expiry = getattr(pos, "expiry", None)
-            if expiry is not None:
-                dte_exit_threshold = getattr(self._config.strategy, "dte_exit", 2)
-                try:
-                    dte_remaining = (expiry - _date.today()).days
-                except Exception:
-                    dte_remaining = 999
-                if dte_remaining <= dte_exit_threshold:
-                    allow_exit = getattr(self._config.strategy, "allow_dte_exit_during_ban", True)
-                    if allow_exit:
-                        return "DTE_EXIT", f"DTE_EXIT_DURING_BAN: dte={dte_remaining}"
-                    else:
-                        logger.warning("dte_exit_blocked_by_ban",
-                                       extra={"symbol": symbol, "dte": dte_remaining})
-                        self._send_alert(
-                            f"WARNING: {symbol} DTE={dte_remaining} needs exit but on F&O ban list. "
-                            "allow_dte_exit_during_ban=False. Manual action required."
-                        )
-                        return "BAN_HOLD_DTE_WARN", ""
             return "BAN_HOLD", ""
         else:
             if getattr(pos, "ban_hold", False):
@@ -487,22 +451,7 @@ class ShiftMonitor:
                 self._ban_hold_logged.discard(symbol)
                 self._trade_logger.log(EventType.FNO_BAN_LIFTED, symbol, {})
 
-        # ── 2. DTE exit check ─────────────────────────────────────────────
-        expiry = getattr(pos, "expiry", None)
-        if expiry is not None:
-            dte_exit_threshold = getattr(self._config.strategy, "dte_exit", 2)
-            try:
-                dte_remaining = (expiry - _date.today()).days
-            except Exception:
-                dte_remaining = 999
-            if dte_remaining <= dte_exit_threshold:
-                logger.warning("dte_exit_threshold_reached",
-                               extra={"symbol": symbol,
-                                      "dte_remaining": dte_remaining,
-                                      "threshold": dte_exit_threshold})
-                return "DTE_EXIT", f"DTE_EXIT: dte={dte_remaining} ≤ threshold={dte_exit_threshold}"
-
-        # ── 3. Fetch live spot price (use cache if available) ──────────────
+        # ── 2. Fetch live spot price (use cache if available) ──────────────
         spot: Optional[float] = None
         if spot_cache is not None:
             underlying = getattr(pos, "underlying", "")
@@ -591,105 +540,20 @@ class ShiftMonitor:
             except Exception as _exc:
                 logger.debug("profit_target_check_error", extra={"symbol": symbol, "error": str(_exc)})
 
-        # ── 3c. Stop-loss check ───────────────────────────────────────────
-        sl_multiple = getattr(self._config.strategy, "stop_loss_credit_multiple", None)
-        sl_inr      = getattr(self._config.strategy, "stop_loss_inr", None)
-        sl_confirms = int(getattr(self._config.strategy, "stop_loss_confirm_checks", 2))
-
-        if (sl_multiple is not None or sl_inr is not None) and options_cache is not None:
-            try:
-                # Reuse natural close debit keys (same as profit target block)
-                sp_ask_key = f"{pos.short_put.trading_symbol}:ask"
-                sc_ask_key = f"{pos.short_call.trading_symbol}:ask"
-                lp_bid_key = f"{pos.long_put.trading_symbol}:bid"
-                lc_bid_key = f"{pos.long_call.trading_symbol}:bid"
-                sl_keys_ok = all(
-                    k in options_cache
-                    for k in (sp_ask_key, sc_ask_key, lp_bid_key, lc_bid_key)
-                )
-                if sl_keys_ok:
-                    sl_sp_ask = options_cache.get(sp_ask_key, 0.0)
-                    sl_sc_ask = options_cache.get(sc_ask_key, 0.0)
-                    sl_lp_bid = options_cache.get(lp_bid_key, 0.0)
-                    sl_lc_bid = options_cache.get(lc_bid_key, 0.0)
-
-                    # Skip if either short has no live ask — never fall back to
-                    # stale LTP for stop-loss decisions.
-                    if sl_sp_ask > 0 and sl_sc_ask > 0:
-                        sl_close_debit = (sl_sp_ask + sl_sc_ask) - (sl_lp_bid + sl_lc_bid)
-
-                    # Skip check if data looks stale/invalid (close_debit < 0)
-                    if sl_sp_ask > 0 and sl_sc_ask > 0 and sl_close_debit >= 0:
-                        original_credit = float(getattr(pos, "original_credit", 0.0) or 0.0)
-                        per_unit_loss   = sl_close_debit - original_credit  # positive = losing
-
-                        sl_triggered = False
-                        sl_reason    = ""
-
-                        if sl_multiple is not None and original_credit > 0:
-                            if per_unit_loss >= original_credit * float(sl_multiple):
-                                sl_triggered = True
-                                sl_reason = (
-                                    f"loss={per_unit_loss:.4f} >= "
-                                    f"{sl_multiple}× credit={original_credit:.4f}"
-                                )
-
-                        if not sl_triggered and sl_inr is not None:
-                            lots     = int(getattr(pos, "lots", 1) or 1)
-                            lot_size = int(getattr(pos, "lot_size", 1) or 1)
-                            loss_inr = per_unit_loss * lots * lot_size
-                            if loss_inr >= float(sl_inr):
-                                sl_triggered = True
-                                sl_reason = (
-                                    f"loss_inr={loss_inr:.0f} >= sl_inr={sl_inr:.0f}"
-                                )
-
-                        pos_id = id(pos)
-                        if sl_triggered:
-                            self._sl_breach_count[pos_id] = (
-                                self._sl_breach_count.get(pos_id, 0) + 1
-                            )
-                            breach_n = self._sl_breach_count[pos_id]
-                            logger.debug(
-                                "stop_loss_breach",
-                                extra={
-                                    "symbol": symbol,
-                                    "breach_count": breach_n,
-                                    "required": sl_confirms,
-                                    "reason": sl_reason,
-                                },
-                            )
-                            if breach_n >= sl_confirms:
-                                self._trade_logger.log(
-                                    EventType.STOP_LOSS_EXIT,
-                                    symbol,
-                                    {
-                                        "original_credit": round(original_credit, 4),
-                                        "close_debit": round(sl_close_debit, 4),
-                                        "per_unit_loss": round(per_unit_loss, 4),
-                                        "breach_count": breach_n,
-                                        "reason": sl_reason,
-                                    },
-                                    level="ERROR",
-                                )
-                                self._sl_breach_count.pop(pos_id, None)
-                                return "STOP_LOSS_EXIT", sl_reason
-                        else:
-                            # Reset consecutive counter on a clean cycle
-                            self._sl_breach_count.pop(pos_id, None)
-            except Exception as _exc:
-                logger.debug("stop_loss_check_error", extra={"symbol": symbol, "error": str(_exc)})
-
         # ── 4. Shift checks ────────────────────────────────────────────────
+        # Trigger when the short strike is within shift_trigger_pct% of the
+        # current spot price (distance measured as % of spot, not of strike).
         shift_trigger_pct = self._config.strategy.shift_trigger_pct
         short_put_strike = float(pos.short_put.strike)
         short_call_strike = float(pos.short_call.strike)
 
-        put_breach_level  = short_put_strike  * (1.0 + shift_trigger_pct / 100.0)
-        call_breach_level = short_call_strike * (1.0 - shift_trigger_pct / 100.0)
+        # PUT: trigger when (spot - short_put_strike) / spot * 100 <= shift_trigger_pct
+        put_breach_level  = spot * (1.0 - shift_trigger_pct / 100.0)
+        # CALL: trigger when (short_call_strike - spot) / spot * 100 <= shift_trigger_pct
+        call_breach_level = spot * (1.0 + shift_trigger_pct / 100.0)
 
-        if spot < put_breach_level:
-            pct_away = (spot - short_put_strike) / short_put_strike * 100.0
+        if short_put_strike >= put_breach_level:
+            pct_away = (spot - short_put_strike) / spot * 100.0
             self._trade_logger.log(
                 EventType.SHIFT_TRIGGERED,
                 symbol,
@@ -702,10 +566,10 @@ class ShiftMonitor:
                 },
                 level="WARNING",
             )
-            return "SHIFT_PUT", f"SHIFT_PUT: spot={spot:.2f} < breach={put_breach_level:.2f}"
+            return "SHIFT_PUT", f"SHIFT_PUT: short_put={short_put_strike:.2f} >= breach={put_breach_level:.2f}"
 
-        if spot > call_breach_level:
-            pct_away = (short_call_strike - spot) / short_call_strike * 100.0
+        if short_call_strike <= call_breach_level:
+            pct_away = (short_call_strike - spot) / spot * 100.0
             self._trade_logger.log(
                 EventType.SHIFT_TRIGGERED,
                 symbol,
@@ -718,7 +582,7 @@ class ShiftMonitor:
                 },
                 level="WARNING",
             )
-            return "SHIFT_CALL", f"SHIFT_CALL: spot={spot:.2f} > breach={call_breach_level:.2f}"
+            return "SHIFT_CALL", f"SHIFT_CALL: short_call={short_call_strike:.2f} <= breach={call_breach_level:.2f}"
 
         return "", ""
 

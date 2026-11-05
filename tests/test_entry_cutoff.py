@@ -49,8 +49,6 @@ def _make_config(
         entry_start=entry_start,
         entry_end=entry_end,
         entry_completion_buffer_min=buffer_min,
-        min_entry_premium_pct=0.0,
-        min_shift_edge=-9999.0,
     )
     capital = CapitalConfig(
         total_capital=2_000_000,
