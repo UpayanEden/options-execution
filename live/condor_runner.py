@@ -16,6 +16,7 @@ from __future__ import annotations
 import bisect
 import json
 import logging
+import math
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -812,27 +813,25 @@ class CondorRunner:
             long_call_inst.trading_symbol: long_call_price,
         }
 
+        # Use net remaining buying power; pledged collateral is already included.
         try:
             margins_data = self._broker.get_margins()
-            equity_avail = (margins_data.get("equity", {}) or margins_data).get("available", {})
-            cash_margin = float(equity_avail.get("live_balance", 0) or 0)
+            equity = margins_data.get("equity", margins_data)
+            equity_avail = equity["available"]
+            available_margin = float(equity["net"])
+            cash_margin = float(equity_avail["live_balance"])
             stock_margin = float(equity_avail.get("collateral", 0) or 0)
-            if stock_margin <= 0:
-                available_margin = cash_margin
-                margin_source = "cash_only"
-            elif cash_margin <= 0:
-                available_margin = stock_margin
-                margin_source = "stock_only"
-            else:
-                available_margin = cash_margin * 0.5 + stock_margin * 0.5
-                margin_source = "50_50_split"
-        except BrokerError:
-            cash_margin = 0.0
-            stock_margin = 0.0
-            available_margin = 0.0
-            margin_source = ""
+            if not all(math.isfinite(v) for v in (available_margin, cash_margin, stock_margin)):
+                raise ValueError("Non-finite broker funds")
+            margin_source = "broker_net"
+        except (BrokerError, KeyError, TypeError, ValueError) as exc:
+            self._trade_logger.log(
+                EventType.ENTRY_FAILED, symbol,
+                {"reason": "broker_funds_unavailable", "error": str(exc)}, level="ERROR",
+            )
+            return None
 
-        # ── 8a. Broker basket margin (falls back to estimate on API error) ──
+        # Require a broker preview; never fall back to wing-width estimates.
         basket_orders_for_margin = [
             {
                 "exchange": "NFO",
@@ -875,29 +874,25 @@ class CondorRunner:
                 "price": float(long_call_price),
             },
         ]
-        broker_required_margin: Optional[float] = None
+        # Match execution: long put, long call, short put, short call.
+        basket_orders_for_margin = [basket_orders_for_margin[i] for i in (1, 3, 0, 2)]
         try:
-            margin_result = self._broker.get_basket_margin(basket_orders_for_margin)
-            raw = margin_result.get("required", None)
-            if raw is not None:
-                broker_required_margin = float(raw)
-                logger.info(
-                    "broker_basket_margin_fetched",
-                    extra={"symbol": symbol, "required": round(broker_required_margin, 2)},
-                )
-        except BrokerError as exc:
-            logger.warning(
-                "broker_basket_margin_failed",
-                extra={"symbol": symbol, "error": str(exc)},
+            margin_result = self._broker.get_basket_margin(
+                basket_orders_for_margin, consider_positions=True,
             )
-
-        required_margin = (
-            broker_required_margin
-            if broker_required_margin is not None
-            else self._capital_manager.estimate_margin(
-                spot, lot_size, lots, self._config.strategy.wing_width_pct
+            initial_margin = float(margin_result["initial"]["total"])
+            final_margin = float(margin_result["final"]["total"])
+            if not all(math.isfinite(v) for v in (initial_margin, final_margin)):
+                raise ValueError("Non-finite broker margin")
+            # Initial funds must cover execution before all hedge benefits apply.
+            broker_required_margin = max(0.0, initial_margin, final_margin)
+            required_margin = broker_required_margin
+        except (BrokerError, KeyError, TypeError, ValueError) as exc:
+            self._trade_logger.log(
+                EventType.ENTRY_FAILED, symbol,
+                {"reason": "broker_margin_unavailable", "error": str(exc)}, level="ERROR",
             )
-        )
+            return None
 
         guard_ctx = GuardContext(
             underlying=symbol,
@@ -925,6 +920,7 @@ class CondorRunner:
             expected_prices=expected_prices,
             open_condors_count=len([p for p in self._positions if p.state == "OPEN"]),
             broker_required_margin=broker_required_margin,
+            available_cash=cash_margin,
         )
 
         guard_report: GuardReport = run_all_guards(guard_ctx)

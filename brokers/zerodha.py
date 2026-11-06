@@ -452,17 +452,18 @@ class ZerodhaBroker(BrokerAdapter):
         except Exception as exc:
             raise BrokerError(f"Failed to fetch margins: {exc}") from exc
 
-    def get_basket_margin(self, orders: list[dict]) -> dict:
+    def get_basket_margin(self, orders: list[dict], *, consider_positions: bool = False) -> dict:
         """
         Calculate margin for a basket of orders using Zerodha's margin endpoint.
         orders: list of dicts matching Zerodha's basket_order_margins format.
-        Returns margin dict with 'required', 'available', 'charges' etc.
+        Returns Kite's initial/final margin totals and charges.
         Does NOT place any orders.
         """
         try:
-            result = self._kite.basket_order_margins(orders, consider_positions=False)
+            result = self._kite.basket_order_margins(orders, consider_positions=consider_positions)
             logger.info("basket_margin_calculated", extra={
-                "required": result.get("required", "N/A"),
+                "initial": result.get("initial", {}).get("total"),
+                "final": result.get("final", {}).get("total"),
                 "charges": result.get("charges", {}).get("total", "N/A"),
             })
             return result

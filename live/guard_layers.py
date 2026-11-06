@@ -150,6 +150,9 @@ class GuardContext:
     open_condors_count: int = 0
     """Current number of open condor positions (for PositionGuard)."""
 
+    available_cash: Optional[float] = None
+    """Remaining cash balance, separate from net buying power."""
+
     broker_required_margin: Optional[float] = None
     """Broker-confirmed basket margin (from get_basket_margin). If set, CapitalGuard
     uses this instead of the internal wing-width estimate."""
@@ -460,6 +463,7 @@ def _capital_guard(ctx: GuardContext) -> GuardResult:
 
     Checks:
     - Required margin <= max_capital_per_stock.
+    - Net buying power >= full required margin.
     - Available cash >= cash_margin_pct × required margin.
     - Daily P&L > -20% of total capital.
     - Total allocated margin (including this trade) <= total_capital.
@@ -491,13 +495,18 @@ def _capital_guard(ctx: GuardContext) -> GuardResult:
             f"Required margin {required_margin:.0f} > max_capital_per_stock {max_per_stock:.0f}"
         )
 
-    # Cash availability
-    required_cash = cash_pct * required_margin
-    data["required_cash"] = round(required_cash, 2)
-    if ctx.available_margin < required_cash:
+    # Net buying power must cover the entire requirement, not just its cash fraction.
+    if ctx.available_margin < required_margin:
         failures.append(
-            f"Available margin {ctx.available_margin:.0f} < required cash "
-            f"{required_cash:.0f} ({cash_pct*100:.0f}% of {required_margin:.0f})"
+            f"Available net margin {ctx.available_margin:.0f} < required margin {required_margin:.0f}"
+        )
+    required_cash = cash_pct * required_margin
+    available_cash = ctx.available_cash if ctx.available_cash is not None else ctx.available_margin
+    data["required_cash"] = round(required_cash, 2)
+    data["available_cash"] = round(available_cash, 2)
+    if available_cash < required_cash:
+        failures.append(
+            f"Available cash {available_cash:.0f} < required cash {required_cash:.0f}"
         )
 
     # Daily loss limit: -20% of total capital

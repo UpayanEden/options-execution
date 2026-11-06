@@ -66,7 +66,7 @@ class PaperBroker(BrokerAdapter):
         self._orders: List[Dict[str, Any]] = []
         self._next_order_id = 1
         self._positions: List[Dict[str, Any]] = []
-        self._margins = {"equity": {"available": {"live_balance": 500_000}}}
+        self._margins = {"equity": {"net": 500_000, "available": {"live_balance": 500_000}}}
         self._raise_quote_error = False
         self._raise_instrument_error = False
         self._instruments = self._build_instruments()
@@ -235,9 +235,9 @@ class PaperBroker(BrokerAdapter):
         """Return None — spot is injected via _get_spot mock."""
         return None
 
-    def get_basket_margin(self, orders: list) -> dict:
-        """Return empty dict — broker_required_margin falls back to estimate in tests."""
-        return {}
+    def get_basket_margin(self, orders: list, *, consider_positions=False) -> dict:
+        """Return a deterministic Kite-style margin preview."""
+        return {"initial": {"total": 16800}, "final": {"total": 14000}}
 
 
 # ── Config fixture ─────────────────────────────────────────────────────────
